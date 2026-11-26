@@ -574,7 +574,7 @@ footer a{color:var(--muted)}
 </section>
 </div>
 
-<footer><div class="wrap">© 2026 Huseyn Babayev · <span class="en">Built with Claude</span><span class="ru">Сделано с Claude</span> · <span class="en">* Figures are based on feedback from department heads and C-level management.</span><span class="ru">* Цифры указаны на основе обратной связи от руководителей отделов и C-level менеджмента.</span><br><span class="en">Photos</span><span class="ru">Фото</span>: <span id="credits"></span> / <a href="https://unsplash.com/?utm_source=hb_resume&amp;utm_medium=referral" target="_blank" rel="noopener">Unsplash</a></div></footer>
+<footer><div class="wrap">© 2026 Huseyn Babayev · <span class="en">Built with Claude</span><span class="ru">Сделано с Claude</span> · <span class="en">* Figures are based on feedback from department heads and C-level management.</span><span class="ru">* Цифры указаны на основе обратной связи от руководителей отделов и C-level менеджмента.</span></div></footer>
 
 <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title">
   <div class="sheet" id="sheet">
@@ -595,8 +595,6 @@ footer a{color:var(--muted)}
   document.querySelectorAll('span.en').forEach(s=>{const t=TRD[s.innerHTML.trim()];if(t===undefined)return;const x=document.createElement('span');x.className='tr';x.innerHTML=t;s.after(x)});
   const icons=()=>{try{window.lucide&&lucide.createIcons()}catch(e){}};
 
-  const CREDITS=[['Erik Mclean','introspectivedsgn'],['Taylor R','usualmorals'],['Eyestetix Studio','eyestetix_studio'],['Pandhuya Niking','dispandu'],['Giorgio Trovato','giorgiotrovato'],['Chris Liverani','chrisliverani'],['freestocks','freestocks'],['kuu akura','akurakuu'],['Kingsley Mkpandiok','iamkingsleey'],['Parsa','ilostmyselfout'],['Aidan Howe','aidanhowe'],['Cherrydeck','cherrydeck'],['insung yoon','insungpandora'],['Jud Mackrill','judmackrill'],['Quilia','heyquilia']];
-  const cr=document.getElementById('credits');CREDITS.forEach(([n,u],k)=>{const a=document.createElement('a');a.href='https://unsplash.com/@'+u+'?utm_source=hb_resume&utm_medium=referral';a.target='_blank';a.rel='noopener';a.textContent=n;cr.appendChild(a);if(k<CREDITS.length-1)cr.appendChild(document.createTextNode(', '))});
 
   function setTrack(t,push){body.dataset.track=t;
     document.querySelectorAll('button[data-track]').forEach(b=>{if(b.closest('.tabs'))b.setAttribute('aria-pressed',String(b.dataset.track===t))});
