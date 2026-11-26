@@ -1,0 +1,1334 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pizzeria Rush</title>
+<style>
+  :root{
+    --ground:#f6ead9;
+    --ground-2:#efdcc0;
+    --wall:#2b1e16;
+    --wall-2:#3c2a1c;
+    --ink:#2b1e16;
+    --ink-soft:#6b5947;
+    --paper:#fffaf0;
+    --accent:#e2482c;
+    --accent-ink:#fff4ee;
+    --gray-table:#9aa1a6;
+    --c-red:#e2482c;
+    --c-blue:#3169c9;
+    --c-green:#3f9142;
+    --c-yellow:#f2b705;
+    --shadow: 0 18px 50px rgba(30,18,10,.35);
+  }
+  :root[data-theme="dark"]{
+    --wall:#171009;
+    --wall-2:#241708;
+    --paper:#241a12;
+    --ink:#f3e7d6;
+    --ink-soft:#c9b79f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --wall:#171009;
+      --wall-2:#241708;
+      --paper:#241a12;
+      --ink:#f3e7d6;
+      --ink-soft:#c9b79f;
+    }
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;
+    height:100%;
+    background:
+      radial-gradient(120% 140% at 50% -10%, var(--wall-2), var(--wall) 60%);
+    font-family: ui-rounded, "SF Pro Rounded", "Segoe UI Rounded", system-ui, -apple-system, sans-serif;
+    color:var(--ink);
+    overflow:hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .stage{
+    height:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:18px;
+  }
+  .cabinet{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    border-radius:26px;
+    background: linear-gradient(180deg, var(--wall-2), var(--wall));
+    box-shadow: var(--shadow), inset 0 0 0 1px rgba(255,255,255,.05);
+    padding:10px;
+    max-height:100%;
+  }
+  .titlebar{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    padding:6px 10px 10px;
+    gap:12px;
+  }
+  .titlebar h1{
+    margin:0;
+    font-size:15px;
+    font-weight:800;
+    letter-spacing:.02em;
+    color:var(--accent-ink);
+  }
+  .titlebar h1 span{ color:var(--c-yellow); }
+  .titlebar .tag{
+    font-size:10px;
+    font-weight:600;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:#c9b79f;
+    opacity:.75;
+  }
+  .screen-wrap{
+    position:relative;
+    border-radius:16px;
+    overflow:hidden;
+    box-shadow: inset 0 0 0 3px rgba(0,0,0,.35), inset 0 2px 14px rgba(0,0,0,.5);
+    background:var(--ground);
+  }
+  canvas{
+    display:block;
+    touch-action:none;
+    user-select:none;
+  }
+  .hint{
+    position:absolute;
+    left:50%;
+    bottom:14px;
+    transform:translateX(-50%);
+    background:rgba(20,14,9,.82);
+    color:#fdf3e4;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.01em;
+    padding:9px 16px;
+    border-radius:999px;
+    pointer-events:none;
+    box-shadow:0 8px 20px rgba(0,0,0,.35);
+    transition:opacity .5s ease, transform .5s ease;
+    white-space:nowrap;
+  }
+  .hint.hidden{ opacity:0; transform:translateX(-50%) translateY(8px); }
+  .footer{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:10px 12px 4px;
+    font-size:10px;
+    color:#a9977f;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    font-weight:600;
+  }
+  .footer b{ color:#e8d9c3; font-weight:700; }
+  @media (max-width:480px){
+    .stage{ padding:8px; }
+    .cabinet{ border-radius:18px; padding:7px; width:100%; }
+    .titlebar h1{ font-size:13px; }
+  }
+</style>
+
+<div class="stage">
+  <div class="cabinet">
+    <div class="titlebar">
+      <h1>Pizzeria <span>Rush</span></h1>
+      <div class="tag">Prototype</div>
+    </div>
+    <div class="screen-wrap">
+      <canvas id="game"></canvas>
+      <div class="hint" id="hint">Drag anywhere to walk — the rest happens automatically</div>
+    </div>
+    <div class="footer">
+      <span>Seat &middot; Serve &middot; Collect &middot; Clean</span>
+      <span><b>2 parties</b> wait at the door &middot; once in, all are yours to seat</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- canvas / responsive setup ----------
+  const WORLD_W = 480, WORLD_H = 800;
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const screenWrap = canvas.parentElement;
+  const cabinet = document.querySelector('.cabinet');
+  const hint = document.getElementById('hint');
+
+  function layout(){
+    const availW = Math.min(window.innerWidth - 24, 520);
+    const availH = window.innerHeight - 24;
+    const titleFooter = 78;
+    const aspect = WORLD_W / WORLD_H;
+    let h = availH - titleFooter;
+    let w = h * aspect;
+    if (w > availW){ w = availW; h = w / aspect; }
+    cabinet.style.width = (w + 14) + 'px';
+    screenWrap.style.width = w + 'px';
+    screenWrap.style.height = h + 'px';
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    canvas.width = WORLD_W * dpr;
+    canvas.height = WORLD_H * dpr;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener('resize', layout);
+  layout();
+
+  // ---------- helpers ----------
+  function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.sqrt(dx*dx+dy*dy); }
+  function clamp(v,lo,hi){ return Math.max(lo, Math.min(hi, v)); }
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  function roundRect(ctx,x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  const COLORS = {
+    red:   '#e2482c',
+    blue:  '#3169c9',
+    green: '#3f9142',
+    yellow:'#f2b705',
+    gray:  '#9aa1a6'
+  };
+  const COLOR_KEYS = ['red','blue','green','yellow'];
+  const COLOR_DARK = {
+    red:'#a5301b', blue:'#204a8c', green:'#28642b', yellow:'#b8850a', gray:'#6d7378'
+  };
+
+  // ---------- world layout ----------
+  const HUD_H = 46;
+  const BOUNDS = { x0: 26, y0: HUD_H+14, x1: WORLD_W-26, y1: WORLD_H-30 };
+  const DOOR = { x: WORLD_W/2, y: 78 };         // top door — finished customers leave here
+  const ENTRANCE = { x: WORLD_W/2, y: 700 };     // bottom door — new customers queue here
+  const QUEUE_ANCHOR = { x: WORLD_W/2, y: 650 }; // row the door-line queues along, right to left
+  const OUTSIDE_ANCHOR = { x: WORLD_W/2, y: 578 }; // a step back from the door line, visible but not interactive
+  const TABLES_DEF = [
+    { x: 150, y: 300, price: 0 },   // unlocked from the start
+    { x: 330, y: 300, price: 0 },   // unlocked from the start
+    { x: 150, y: 500, price: 500 }, // buy-in
+    { x: 330, y: 500, price: 750 }, // buy-in
+  ];
+  const SPAWNER = { x: 58, y: 400, r: 28 };   // left wall, clear of the entrance queue
+  const WASHER  = { x: 422, y: 400, r: 28 };  // right wall, clear of the entrance queue
+  const TRASHCAN = { x: 412, y: 168, r: 26 };
+  const BOT_STATION = { x: 68, y: 168, r: 26 }; // top-left, mirrors the trashcan up top
+  const BOT_PRICE = 50;
+  const BOT_SPEED = 130;   // noticeably slower than the player
+  const BOT_HOME = { x: WORLD_W/2, y: 460 }; // where it idles when there's nothing to do
+  const DOOR_LINE_SLOTS = 2;    // only this many groups stand at the door and can be picked up —
+                                 // this alone paces how fast new parties can enter; no separate inside cap
+  const QUEUE_CAP = 8;          // total waiting groups (door line + outside overflow)
+  const TRASH_PENALTY = 10;
+  const PATIENCE_LIMIT = 15;    // seconds a seated party will wait for pizza before storming out
+  const ANGRY_PENALTY = 15;     // gold lost when a party walks out unfed
+  const SEAT_OFFSETS = [ {dx:0,dy:-32}, {dx:32,dy:0}, {dx:0,dy:32}, {dx:-32,dy:0} ];
+
+  const INTERACT_R = 52;
+  const PLAYER_SPEED = 300;
+  const FOLLOWER_SPEED = 280;
+
+  // ---------- entity state ----------
+  const player = {
+    x: WORLD_W/2, y: 640, tx: WORLD_W/2, ty: 640,
+    carrying: null,      // null | 'pizza' | 'dishes'
+    dishCount: 0,        // how many dirty-dish loads are stacked up while carrying:'dishes'
+    leading: null,       // group ref or null
+    trail: [],           // recorded positions
+    facing: 1,
+  };
+
+  // hired waiter — once unlocked, autonomously ferries pizza and buses dirty dishes
+  const bot = {
+    x: BOT_STATION.x, y: BOT_STATION.y+40, tx: BOT_STATION.x, ty: BOT_STATION.y+40,
+    unlocked: false,
+    carrying: null,   // null | 'pizza' | 'dishes'
+    dishCount: 0,
+  };
+
+  let dragging = false;
+
+  const tables = TABLES_DEF.map((t,i)=>({
+    id:i, x:t.x, y:t.y, r:30, capacity:4,
+    color:'gray',              // resets to 'gray' once fully vacated
+    seatedGroups:[],           // groups actually occupying seats (each tracks its own pizza/eating state)
+    dirtyCount:0,              // seats currently holding dirty dishes (not sittable until collected)
+    unlocked: t.price === 0,   // locked tables must be bought before they can seat anyone
+    price: t.price,
+  }));
+
+  function occupiedSeats(t){
+    let n = 0;
+    for (const g of t.seatedGroups) n += g.size;
+    return n;
+  }
+  function availableSeats(t){
+    return t.capacity - occupiedSeats(t) - t.dirtyCount;
+  }
+  // A fuller table pays out more per party — rewards packing tables tight instead of
+  // scattering single small groups across the room.
+  function occupancyMultiplier(t){
+    const frac = occupiedSeats(t) / t.capacity;
+    if (frac >= 1)     return 1.5;  // completely full
+    if (frac >= 0.75)  return 1.2;  // three quarters
+    if (frac >= 0.5)   return 1.0;  // half
+    return 0.8;                     // mostly empty
+  }
+  function positionGroupSeats(g, t, startIdx){
+    g.seatStart = startIdx;
+    g.members.forEach((m,i)=>{
+      const off = SEAT_OFFSETS[(startIdx+i) % SEAT_OFFSETS.length];
+      m.tx = t.x+off.dx; m.ty = t.y+off.dy;
+    });
+  }
+  // Seats as much of `g` as fits at table `t`. Whatever doesn't fit is sent back to the
+  // entrance queue (as its own party) instead of camping next to the table.
+  function seatGroupAtTable(t, g){
+    const avail = availableSeats(t);
+    if (avail <= 0) return false;
+    if (t.color === 'gray') t.color = g.color;
+    const startIdx = occupiedSeats(t);
+    const seatCount = Math.min(g.size, avail);
+    if (seatCount < g.size){
+      const overflowMembers = g.members.splice(seatCount);
+      g.size = seatCount;
+      const requeued = {
+        id: groupSeq++, color: g.color, size: overflowMembers.length,
+        state: 'queue', foodState: null, outside: true,
+        members: overflowMembers, table: null,
+        anchorX: QUEUE_ANCHOR.x, anchorY: QUEUE_ANCHOR.y,
+      };
+      queue.unshift(requeued); // rejoin near the front of the line, not the back
+    }
+    g.state = 'seated';
+    g.table = t;
+    g.foodState = 'waiting_pizza';
+    g.patience = PATIENCE_LIMIT; // resets each time they sit down; only ticks while waiting on food
+    positionGroupSeats(g, t, startIdx);
+    t.seatedGroups.push(g);
+    return true;
+  }
+  function updateTableColorReset(t){
+    if (t.color !== 'gray' && t.seatedGroups.length === 0){
+      t.color = 'gray';
+    }
+  }
+
+  // ---------- hired waiter AI — same jobs the player can do (pizza + dishes), never seats guests ----------
+  function findHungryTable(){
+    for (const t of tables){
+      if (t.unlocked && t.seatedGroups.some(g=>g.foodState==='waiting_pizza')) return t;
+    }
+    return null;
+  }
+  function findDirtyTable(){
+    for (const t of tables){
+      if (t.unlocked && t.dirtyCount > 0) return t;
+    }
+    return null;
+  }
+  function findCoinsReadyTable(){
+    for (const t of tables){
+      if (t.unlocked && t.seatedGroups.some(g=>g.foodState==='coins_ready')) return t;
+    }
+    return null;
+  }
+  function updateBot(dt){
+    if (!bot.unlocked) return;
+    moveToward(bot, bot.tx, bot.ty, BOT_SPEED, dt);
+
+    // collecting a finished party's coins needs no free hands — grab it wherever the bot
+    // currently stands, same as the player. This is what actually sends them off and
+    // leaves dishes behind for the bot to bus.
+    for (const t of tables){
+      if (!t.unlocked || !nearestWithin(bot.x,bot.y,t.x,t.y,INTERACT_R)) continue;
+      for (let i=0;i<t.seatedGroups.length;i++){
+        const g = t.seatedGroups[i];
+        if (g.foodState !== 'coins_ready') continue;
+        money += g.coinAmount;
+        served += g.size;
+        const tag = g.payMultiplier >= 1.5 ? ' full!' : g.payMultiplier < 1 ? ' (empty table)' : '';
+        popup(t.x, t.y-20, '+$'+g.coinAmount+tag, '#f2b705');
+        t.seatedGroups.splice(i,1);
+        t.dirtyCount += g.size;
+        g.state = 'leaving';
+        g.foodState = null;
+        g.table = null;
+        break;
+      }
+    }
+
+    if (bot.carrying === 'pizza'){
+      const t = findHungryTable();
+      if (t){
+        bot.tx = t.x; bot.ty = t.y;
+        if (nearestWithin(bot.x,bot.y,t.x,t.y,INTERACT_R)){
+          t.seatedGroups.forEach(g=>{
+            if (g.foodState !== 'waiting_pizza') return;
+            g.foodState = 'eating';
+            g.eatDuration = 3.2 + g.size*0.6;
+            g.eatTimer = g.eatDuration;
+          });
+          bot.carrying = null;
+        }
+      } else {
+        bot.tx = SPAWNER.x; bot.ty = SPAWNER.y - 40; // wait nearby holding it until someone needs it
+      }
+      return;
+    }
+
+    if (bot.carrying === 'dishes'){
+      const t = findDirtyTable();
+      if (t){
+        bot.tx = t.x; bot.ty = t.y;
+        if (nearestWithin(bot.x,bot.y,t.x,t.y,INTERACT_R)){
+          bot.dishCount += t.dirtyCount;
+          t.dirtyCount = 0;
+        }
+      } else {
+        bot.tx = WASHER.x; bot.ty = WASHER.y - 40;
+        if (nearestWithin(bot.x,bot.y,WASHER.x,WASHER.y,INTERACT_R)){
+          bot.carrying = null;
+          bot.dishCount = 0;
+        }
+      }
+      return;
+    }
+
+    // hands free — priority: feed the hungry, then send off anyone done eating, then bus tables
+    const hungryTable = findHungryTable();
+    if (hungryTable){
+      bot.tx = SPAWNER.x; bot.ty = SPAWNER.y - 40;
+      if (nearestWithin(bot.x,bot.y,SPAWNER.x,SPAWNER.y,INTERACT_R)){
+        bot.carrying = 'pizza';
+      }
+      return;
+    }
+    const coinsTable = findCoinsReadyTable();
+    if (coinsTable){
+      bot.tx = coinsTable.x; bot.ty = coinsTable.y; // the opportunistic check above collects on arrival
+      return;
+    }
+    const dirtyTable = findDirtyTable();
+    if (dirtyTable){
+      bot.tx = dirtyTable.x; bot.ty = dirtyTable.y;
+      if (nearestWithin(bot.x,bot.y,dirtyTable.x,dirtyTable.y,INTERACT_R)){
+        bot.carrying = 'dishes';
+        bot.dishCount += dirtyTable.dirtyCount;
+        dirtyTable.dirtyCount = 0;
+      }
+      return;
+    }
+    // nothing to do — head home and wait
+    bot.tx = BOT_HOME.x; bot.ty = BOT_HOME.y;
+  }
+
+  let queue = [];      // groups waiting at entrance
+  let groups = [];      // active groups: following / seated / leaving
+  let popups = [];      // floating text
+  let groupSeq = 1;
+
+  let money = 30;
+  let served = 0;
+  let spawnClock = 0;
+  let nextSpawnAt = 1.4;
+
+  function makeGroup(color, size){
+    const members = [];
+    for (let i=0;i<size;i++){
+      members.push({
+        x: QUEUE_ANCHOR.x, y: QUEUE_ANCHOR.y,
+        // members stand shoulder to shoulder in a flat horizontal line, not clustered
+        tx:0, ty:0, ox:(i-(size-1)/2)*12, oy:0,
+      });
+    }
+    const id = groupSeq++;
+    return {
+      id,
+      color, size,
+      state: 'queue',    // queue | following | seated | leaving
+      foodState: null,   // null | waiting_pizza | eating | coins_ready  (only meaningful while seated)
+      outside: true,     // true while stuck behind the 2 door slots, waiting further back
+      members,
+      table:null,
+      anchorX: QUEUE_ANCHOR.x, anchorY: QUEUE_ANCHOR.y,
+    };
+  }
+
+  function spawnQueueGroup(){
+    const color = COLOR_KEYS[Math.floor(Math.random()*COLOR_KEYS.length)];
+    const size = 1 + Math.floor(Math.random()* (Math.random()<0.55?3:4)); // biased 1-3, occasional 4
+    if (queue.length >= QUEUE_CAP) return;
+    queue.push(makeGroup(color, Math.max(1, Math.min(4,size))));
+  }
+
+  function popup(x,y,text,color){
+    popups.push({x,y,text,color,life:1.1, vy:-34});
+  }
+
+  // ---------- input (pointer = drag to move) ----------
+  function toWorld(clientX, clientY){
+    const rect = canvas.getBoundingClientRect();
+    const sx = WORLD_W / rect.width;
+    const sy = WORLD_H / rect.height;
+    return { x:(clientX-rect.left)*sx, y:(clientY-rect.top)*sy };
+  }
+  function setTargetFromEvent(e){
+    const p = toWorld(e.clientX, e.clientY);
+    player.tx = clamp(p.x, BOUNDS.x0, BOUNDS.x1);
+    player.ty = clamp(p.y, BOUNDS.y0, BOUNDS.y1);
+  }
+  canvas.addEventListener('pointerdown', (e)=>{
+    dragging = true;
+    canvas.setPointerCapture(e.pointerId);
+    setTargetFromEvent(e);
+    if (hint && !hint.classList.contains('hidden')){
+      hint.classList.add('hidden');
+    }
+  });
+  canvas.addEventListener('pointermove', (e)=>{
+    if (!dragging) return;
+    setTargetFromEvent(e);
+  });
+  function endDrag(e){ dragging = false; }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('pointerleave', ()=>{ /* keep moving toward last target */ });
+
+  // ---------- update ----------
+  let lastT = performance.now();
+  function frame(now){
+    let dt = (now-lastT)/1000;
+    lastT = now;
+    dt = Math.min(dt, 0.05);
+    update(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  function moveToward(ent, tx, ty, speed, dt){
+    const dx = tx-ent.x, dy = ty-ent.y;
+    const d = Math.sqrt(dx*dx+dy*dy);
+    const step = speed*dt;
+    if (d <= step || d < 0.01){ ent.x = tx; ent.y = ty; return; }
+    ent.x += dx/d*step;
+    ent.y += dy/d*step;
+  }
+
+  function update(dt){
+    // player movement
+    const pd = Math.hypot(player.tx-player.x, player.ty-player.y);
+    if (pd > 0.5) player.facing = player.tx >= player.x ? 1 : -1;
+    moveToward(player, player.tx, player.ty, PLAYER_SPEED, dt);
+
+    // trail recording (for follower snake)
+    player.trail.unshift({x:player.x, y:player.y});
+    if (player.trail.length > 400) player.trail.length = 400;
+
+    // spawn queue groups over time
+    spawnClock += dt;
+    if (spawnClock >= nextSpawnAt){
+      spawnClock = 0;
+      nextSpawnAt = 2.6 + Math.random()*2.2;
+      spawnQueueGroup();
+    }
+
+    // position queue members: only the first DOOR_LINE_SLOTS stand at the door (and are pickable);
+    // the rest wait further back outside — visible, but out of reach until a door slot opens up.
+    queue.forEach((g,i)=>{
+      let ax, ay;
+      if (i < DOOR_LINE_SLOTS){
+        ax = QUEUE_ANCHOR.x + 30 - i*60;
+        ay = QUEUE_ANCHOR.y;
+        g.outside = false;
+      } else {
+        const j = i - DOOR_LINE_SLOTS;
+        const col = j % 3, row = Math.floor(j/3);
+        ax = OUTSIDE_ANCHOR.x + (col-1)*46;
+        ay = OUTSIDE_ANCHOR.y - row*24; // further rows sit further from the door, not closer to the screen edge
+        g.outside = true;
+      }
+      g.anchorX = ax; g.anchorY = ay;
+      g.members.forEach(m=>{
+        moveToward(m, ax+m.ox, ay+m.oy, 220, dt);
+      });
+    });
+
+    // interactions
+    handleInteractions();
+    updateBot(dt);
+
+    // following groups: snake along player's trail
+    groups.forEach(g=>{
+      if (g.state !== 'following') return;
+      g.members.forEach((m,i)=>{
+        const idx = Math.min(player.trail.length-1, (i+1)*9);
+        const t = player.trail[idx] || player;
+        moveToward(m, t.x+m.ox*0.3, t.y+m.oy*0.3, FOLLOWER_SPEED, dt);
+      });
+    });
+
+    // seated groups: ease to their seats
+    groups.forEach(g=>{
+      if (g.state !== 'seated') return;
+      g.members.forEach(m=>{
+        moveToward(m, m.tx, m.ty, 320, dt);
+      });
+    });
+
+    // leaving groups: walk down to the exit, then remove
+    for (let i=groups.length-1;i>=0;i--){
+      const g = groups[i];
+      if (g.state !== 'leaving') continue;
+      g.members.forEach((m,mi)=>{
+        moveToward(m, DOOR.x + (mi-g.size/2)*10, DOOR.y, 240, dt);
+      });
+      const lead = g.members[0];
+      if (dist(lead, DOOR) < 14){
+        groups.splice(i,1);
+      }
+    }
+
+    // per-group eating timers (each seated group/party eats independently)
+    groups.forEach(g=>{
+      if (g.foodState === 'eating'){
+        g.eatTimer -= dt;
+        if (g.eatTimer <= 0){
+          g.foodState = 'coins_ready';
+          const base = g.size * 12 + 6;
+          g.payMultiplier = occupancyMultiplier(g.table);
+          g.coinAmount = Math.round(base * g.payMultiplier);
+        }
+      }
+    });
+
+    // impatience: a seated party still waiting on food storms out if it waits too long
+    groups.forEach(g=>{
+      if (g.state !== 'seated' || g.foodState !== 'waiting_pizza') return;
+      g.patience -= dt;
+      if (g.patience <= 0){
+        const t = g.table;
+        const idx = t.seatedGroups.indexOf(g);
+        if (idx !== -1) t.seatedGroups.splice(idx,1);
+        g.state = 'leaving';
+        g.foodState = null;
+        g.table = null;
+        money = Math.max(0, money - ANGRY_PENALTY);
+        popup(t.x, t.y-20, '-$'+ANGRY_PENALTY+' angry!', '#e2482c');
+      }
+    });
+
+    // re-neutralize any table that's now fully vacated
+    tables.forEach(t=>{
+      updateTableColorReset(t);
+    });
+
+    // popups
+    for (let i=popups.length-1;i>=0;i--){
+      const p = popups[i];
+      p.life -= dt;
+      p.y += p.vy*dt;
+      p.vy *= 0.94;
+      if (p.life <= 0) popups.splice(i,1);
+    }
+  }
+
+  function nearestWithin(px,py,x,y,r){
+    return Math.hypot(px-x, py-y) <= r;
+  }
+
+  function handleInteractions(){
+    const px = player.x, py = player.y;
+
+    // 0. walk up to a locked table with enough gold to buy it outright
+    for (const t of tables){
+      if (t.unlocked) continue;
+      if (money < t.price) continue;
+      if (nearestWithin(px,py,t.x,t.y,INTERACT_R)){
+        money -= t.price;
+        t.unlocked = true;
+        popup(t.x, t.y-24, 'Table unlocked!', '#3f9142');
+      }
+    }
+
+    // 0b. hire the waiter bot
+    if (!bot.unlocked && money >= BOT_PRICE && nearestWithin(px,py,BOT_STATION.x,BOT_STATION.y,INTERACT_R)){
+      money -= BOT_PRICE;
+      bot.unlocked = true;
+      popup(BOT_STATION.x, BOT_STATION.y-24, 'Waiter hired!', '#3f9142');
+    }
+
+    // 1. pick up a queued group — works even while carrying pizza/dishes, leading is independent of carrying.
+    // Any customer already inside stays fully interactive; only the door line (not the outside
+    // overflow) is reachable, which is what naturally paces how fast new parties can enter.
+    if (!player.leading){
+      const reachable = Math.min(DOOR_LINE_SLOTS, queue.length);
+      for (let i=0;i<reachable;i++){
+        const g = queue[i];
+        if (nearestWithin(px,py,g.anchorX,g.anchorY,INTERACT_R)){
+          queue.splice(i,1);
+          g.state = 'following';
+          groups.push(g);
+          player.leading = g;
+          break;
+        }
+      }
+    }
+
+    // 2. seat a led group at a valid table — fills whatever seats are free; overflow returns to the queue
+    if (player.leading){
+      const g = player.leading;
+      for (const t of tables){
+        if (!t.unlocked) continue;
+        if (!(t.color === 'gray' || t.color === g.color)) continue;
+        if (availableSeats(t) <= 0) continue;
+        if (nearestWithin(px,py,t.x,t.y,INTERACT_R)){
+          seatGroupAtTable(t, g);
+          player.leading = null;
+          break;
+        }
+      }
+    }
+
+    // 2b. walk a led group straight to the exit to dismiss them — no table, no pizza, no payout
+    if (player.leading && nearestWithin(px,py,DOOR.x,DOOR.y,INTERACT_R)){
+      const g = player.leading;
+      g.state = 'leaving';
+      player.leading = null;
+    }
+
+    // 3. pick up pizza from spawner — works even while leading a group
+    if (!player.carrying){
+      if (nearestWithin(px,py,SPAWNER.x,SPAWNER.y,INTERACT_R+6)){
+        player.carrying = 'pizza';
+      }
+    }
+
+    // 4. deliver pizza — one pizza feeds every hungry party at that table, not just one
+    if (player.carrying === 'pizza'){
+      for (const t of tables){
+        if (!nearestWithin(px,py,t.x,t.y,INTERACT_R)) continue;
+        const hungry = t.seatedGroups.filter(g=>g.foodState === 'waiting_pizza');
+        if (hungry.length === 0) continue;
+        hungry.forEach(g=>{
+          g.foodState = 'eating';
+          g.eatDuration = 3.2 + g.size*0.6;
+          g.eatTimer = g.eatDuration;
+        });
+        player.carrying = null;
+        break;
+      }
+    }
+
+    // 4b. throw away a leftover pizza at the trashcan — costs money
+    if (player.carrying === 'pizza'){
+      if (nearestWithin(px,py,TRASHCAN.x,TRASHCAN.y,INTERACT_R+6)){
+        player.carrying = null;
+        money = Math.max(0, money - TRASH_PENALTY);
+        popup(TRASHCAN.x, TRASHCAN.y-24, '-$'+TRASH_PENALTY, '#e2482c');
+      }
+    }
+
+    // 5. collect coins from a party that finished eating — always available, no hands needed
+    {
+      outer5:
+      for (const t of tables){
+        if (!nearestWithin(px,py,t.x,t.y,INTERACT_R)) continue;
+        for (let i=0;i<t.seatedGroups.length;i++){
+          const g = t.seatedGroups[i];
+          if (g.foodState !== 'coins_ready') continue;
+          money += g.coinAmount;
+          served += g.size;
+          const tag = g.payMultiplier >= 1.5 ? ' full!' : g.payMultiplier < 1 ? ' (empty table)' : '';
+          popup(t.x, t.y-20, '+$'+g.coinAmount+tag, '#f2b705');
+          t.seatedGroups.splice(i,1);
+          t.dirtyCount += g.size;
+          g.state = 'leaving';
+          g.foodState = null;
+          g.table = null;
+          break outer5;
+        }
+      }
+    }
+
+    // 6. pick up dirty dishes — stacks across tables, so multiple tables can be cleared in one trip
+    if (!player.carrying || player.carrying === 'dishes'){
+      for (const t of tables){
+        if (t.dirtyCount <= 0) continue;
+        if (nearestWithin(px,py,t.x,t.y,INTERACT_R)){
+          player.carrying = 'dishes';
+          player.dishCount += t.dirtyCount;
+          t.dirtyCount = 0;
+          break;
+        }
+      }
+    }
+
+    // 7. drop the whole dish stack off at the washer in one go
+    if (player.carrying === 'dishes'){
+      if (nearestWithin(px,py,WASHER.x,WASHER.y,INTERACT_R+6)){
+        player.carrying = null;
+        const n = player.dishCount;
+        player.dishCount = 0;
+        popup(WASHER.x, WASHER.y-24, n>1 ? ('clean x'+n) : 'clean!', '#7fd0ff');
+      }
+    }
+  }
+
+  // ---------- vector icons (no emoji — keeps rendering consistent across devices) ----------
+  function drawPizzaIcon(cx,cy,size){
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.beginPath();
+    ctx.arc(0,0,size,0,Math.PI*2);
+    ctx.fillStyle = '#f2b705';
+    ctx.fill();
+    ctx.lineWidth = size*0.24;
+    ctx.strokeStyle = '#d99a2b';
+    ctx.stroke();
+    ctx.fillStyle = '#c1361f';
+    const dots = 5;
+    for (let i=0;i<dots;i++){
+      const a = (i/dots)*Math.PI*2 + 0.4;
+      const r = size*0.46;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a)*r, Math.sin(a)*r, size*0.17, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawPlateIcon(cx,cy,size,dirty){
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.beginPath();
+    ctx.arc(0,0,size,0,Math.PI*2);
+    ctx.fillStyle = dirty ? '#d9c7a8' : '#ffffff';
+    ctx.fill();
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = dirty ? '#a98a5c' : '#d8cfc4';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0,0,size*0.58,0,Math.PI*2);
+    ctx.strokeStyle = dirty ? '#8a5a3a' : '#ece4d3';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    if (dirty){
+      ctx.fillStyle = '#8a5a3a';
+      ctx.beginPath(); ctx.arc(-size*0.32, size*0.12, size*0.13, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(size*0.26, -size*0.2, size*0.1, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(size*0.08, size*0.32, size*0.08, 0, Math.PI*2); ctx.fill();
+    } else {
+      ctx.strokeStyle = '#d8cfc4';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(-size*0.2,-size*0.4); ctx.lineTo(-size*0.2,size*0.4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(size*0.2,-size*0.4); ctx.lineTo(size*0.2,size*0.4); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawCoinStack(cx,cy,size){
+    ctx.save();
+    ctx.translate(cx,cy);
+    for (let i=0;i<3;i++){
+      ctx.beginPath();
+      ctx.ellipse(0,-i*size*0.36,size,size*0.62,0,0,Math.PI*2);
+      ctx.fillStyle = '#f2b705';
+      ctx.fill();
+      ctx.lineWidth = 1.3;
+      ctx.strokeStyle = '#c98a06';
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#8a5a06';
+    ctx.font = '800 '+Math.round(size*0.95)+'px ui-rounded, system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('$', 0, -size*0.72);
+    ctx.restore();
+  }
+
+  function drawDoorIcon(cx,cy,w,h){
+    ctx.save();
+    ctx.translate(cx,cy);
+    roundRect(ctx,-w/2,-h/2,w,h,4);
+    ctx.fillStyle = '#a9673d';
+    ctx.fill();
+    ctx.strokeStyle = '#6b4023';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-w/2, -h/2+h*0.32); ctx.lineTo(w/2, -h/2+h*0.32);
+    ctx.moveTo(-w/2, -h/2+h*0.66); ctx.lineTo(w/2, -h/2+h*0.66);
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 1.4; ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(w*0.27,0,2.4,0,Math.PI*2);
+    ctx.fillStyle = '#f2b705';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawWashIcon(cx,cy,size){
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.beginPath();
+    ctx.ellipse(0,size*0.18,size,size*0.62,0,0,Math.PI*2);
+    ctx.fillStyle = '#bcd9ea';
+    ctx.fill();
+    ctx.strokeStyle = '#7fa8bf'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    const bubbles = [[-size*0.34,-size*0.02,size*0.16],[size*0.06,-size*0.24,size*0.12],[size*0.3,-size*0.02,size*0.14]];
+    bubbles.forEach(b=>{
+      ctx.beginPath(); ctx.arc(b[0],b[1],b[2],0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#9cc4d6'; ctx.lineWidth = 1; ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  function drawTrashIcon(cx,cy,size){
+    ctx.save();
+    ctx.translate(cx,cy);
+    // lid
+    ctx.beginPath();
+    roundRect(ctx, -size*0.72, -size*0.78, size*1.44, size*0.24, size*0.1);
+    ctx.fillStyle = '#7c8489';
+    ctx.fill();
+    ctx.beginPath();
+    roundRect(ctx, -size*0.22, -size*0.96, size*0.44, size*0.2, size*0.06);
+    ctx.fillStyle = '#7c8489';
+    ctx.fill();
+    // bin body (tapered)
+    ctx.beginPath();
+    ctx.moveTo(-size*0.58, -size*0.5);
+    ctx.lineTo(size*0.58, -size*0.5);
+    ctx.lineTo(size*0.42, size*0.72);
+    ctx.lineTo(-size*0.42, size*0.72);
+    ctx.closePath();
+    ctx.fillStyle = '#9aa1a6';
+    ctx.fill();
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = '#6d7378';
+    ctx.stroke();
+    // ribs
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1.6;
+    [-0.2, 0, 0.2].forEach(f=>{
+      ctx.beginPath();
+      ctx.moveTo(f*size*0.9, -size*0.36);
+      ctx.lineTo(f*size*0.68, size*0.5);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  function drawBotIcon(cx,cy,size){
+    ctx.save();
+    ctx.translate(cx,cy);
+    // antenna
+    ctx.beginPath();
+    ctx.moveTo(0,-size*0.95); ctx.lineTo(0,-size*0.55);
+    ctx.strokeStyle = '#7a8a99'; ctx.lineWidth = size*0.12; ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0,-size*1.02,size*0.13,0,Math.PI*2);
+    ctx.fillStyle = '#5fb0e0'; ctx.fill();
+    // head
+    ctx.beginPath();
+    roundRect(ctx,-size*0.62,-size*0.55,size*1.24,size*1.05,size*0.34);
+    ctx.fillStyle = '#c7ced3';
+    ctx.fill();
+    ctx.lineWidth = size*0.1;
+    ctx.strokeStyle = '#8a939a';
+    ctx.stroke();
+    // visor
+    ctx.beginPath();
+    roundRect(ctx,-size*0.42,-size*0.28,size*0.84,size*0.4,size*0.16);
+    ctx.fillStyle = '#3c4a56';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-size*0.14,-size*0.08,size*0.08,0,Math.PI*2);
+    ctx.arc(size*0.14,-size*0.08,size*0.08,0,Math.PI*2);
+    ctx.fillStyle = '#5fe0c0';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBotStation(){
+    const st = BOT_STATION;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(st.x, st.y, st.r, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(43,30,22,0.08)';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(43,30,22,0.25)';
+    ctx.stroke();
+    drawBotIcon(st.x, st.y+3, st.r*0.5);
+    ctx.font = '700 9px ui-rounded, system-ui, sans-serif';
+    ctx.fillStyle = getCss('--ink-soft');
+    ctx.textAlign = 'center';
+    ctx.fillText('HIRE $'+BOT_PRICE, st.x, st.y+st.r+14);
+    ctx.restore();
+  }
+
+  function drawBot(){
+    if (!bot.unlocked) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(bot.x, bot.y+15, 13, 5, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(bot.x, bot.y+3, 14, 0, Math.PI*2);
+    ctx.fillStyle = '#7a8a99';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#556270';
+    ctx.stroke();
+    drawBotIcon(bot.x, bot.y-8, 15);
+    if (bot.carrying === 'pizza'){
+      drawPizzaIcon(bot.x, bot.y-32, 9);
+    } else if (bot.carrying === 'dishes'){
+      drawPlateIcon(bot.x, bot.y-32, 8, true);
+      if (bot.dishCount > 1){
+        ctx.beginPath();
+        ctx.arc(bot.x+9, bot.y-38, 6.5, 0, Math.PI*2);
+        ctx.fillStyle = '#e2482c';
+        ctx.fill();
+        ctx.font = '700 8px ui-rounded, system-ui, sans-serif';
+        ctx.fillStyle = '#fff4ee';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(bot.dishCount), bot.x+9, bot.y-37);
+      }
+    }
+    ctx.restore();
+  }
+
+  // ---------- drawing ----------
+  function drawRoom(){
+    // floor
+    ctx.fillStyle = getCss('--ground');
+    ctx.fillRect(0,0,WORLD_W,WORLD_H);
+    // floor tiles subtle
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = getCss('--ground-2');
+    ctx.lineWidth = 1;
+    for (let x=0;x<=WORLD_W;x+=40){
+      ctx.beginPath(); ctx.moveTo(x,HUD_H); ctx.lineTo(x,WORLD_H); ctx.stroke();
+    }
+    for (let y=HUD_H;y<=WORLD_H;y+=40){
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(WORLD_W,y); ctx.stroke();
+    }
+    ctx.restore();
+
+    // top door — finished customers leave through here
+    ctx.save();
+    drawDoorIcon(DOOR.x, DOOR.y, 30, 40);
+    ctx.textAlign = 'center';
+    ctx.font = '700 10px ui-rounded, system-ui, sans-serif';
+    ctx.fillStyle = getCss('--ink-soft');
+    ctx.fillText('E X I T', DOOR.x, DOOR.y+34);
+    ctx.restore();
+
+    // bottom door — new customers queue up here, right to left
+    ctx.save();
+    drawDoorIcon(ENTRANCE.x, ENTRANCE.y, 26, 34);
+    ctx.textAlign = 'center';
+    ctx.font = '700 9px ui-rounded, system-ui, sans-serif';
+    ctx.fillStyle = getCss('--ink-soft');
+    ctx.fillText('E N T R A N C E', ENTRANCE.x, ENTRANCE.y+30);
+    ctx.restore();
+  }
+
+  function getCss(varName){
+    return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  }
+
+  function drawStation(st, kind, label){
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(st.x, st.y, st.r, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(43,30,22,0.08)';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(43,30,22,0.25)';
+    ctx.stroke();
+    if (kind === 'pizza') drawPizzaIcon(st.x, st.y, st.r*0.6);
+    else if (kind === 'wash') drawWashIcon(st.x, st.y, st.r*0.62);
+    else drawTrashIcon(st.x, st.y, st.r*0.62);
+    ctx.font = '700 9px ui-rounded, system-ui, sans-serif';
+    ctx.fillStyle = getCss('--ink-soft');
+    ctx.textAlign = 'center';
+    ctx.fillText(label, st.x, st.y+st.r+14);
+    ctx.restore();
+  }
+
+  function drawLockIcon(cx,cy,size){
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.beginPath();
+    ctx.arc(0,-size*0.15,size*0.5,Math.PI,0);
+    ctx.strokeStyle = '#8a8f93';
+    ctx.lineWidth = size*0.22;
+    ctx.stroke();
+    ctx.beginPath();
+    roundRect(ctx,-size*0.62,-size*0.15,size*1.24,size*0.85,size*0.14);
+    ctx.fillStyle = '#8a8f93';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawLockedTable(t){
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(t.x,t.y,t.r,0,Math.PI*2);
+    ctx.fillStyle = 'rgba(154,161,166,0.28)';
+    ctx.fill();
+    ctx.setLineDash([5,4]);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(109,115,120,0.55)';
+    ctx.stroke();
+    ctx.setLineDash([]);
+    drawLockIcon(t.x, t.y-9, 15);
+    ctx.font = '800 13px ui-rounded, system-ui, sans-serif';
+    ctx.fillStyle = getCss('--ink-soft');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('$'+t.price, t.x, t.y+16);
+    ctx.restore();
+  }
+
+  function drawTable(t, time){
+    if (!t.unlocked){ drawLockedTable(t); return; }
+    ctx.save();
+    // seat capacity dots: filled = occupied, brown = dirty, faint = free
+    const occupied = occupiedSeats(t);
+    for (let i=0;i<t.capacity;i++){
+      const off = SEAT_OFFSETS[i];
+      const sx = t.x+off.dx, sy = t.y+off.dy;
+      ctx.beginPath();
+      ctx.arc(sx,sy,6.5,0,Math.PI*2);
+      if (i < occupied) ctx.fillStyle = shade(t.color);
+      else if (i < occupied + t.dirtyCount) ctx.fillStyle = '#a98a5c';
+      else ctx.fillStyle = 'rgba(0,0,0,0.12)';
+      ctx.fill();
+    }
+    // table top
+    ctx.beginPath();
+    ctx.arc(t.x,t.y,t.r,0,Math.PI*2);
+    ctx.fillStyle = t.color === 'gray' ? '#c9cdd0' : COLORS[t.color];
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = t.color === 'gray' ? '#9aa1a6' : COLOR_DARK[t.color];
+    ctx.stroke();
+    // inner disc
+    ctx.beginPath();
+    ctx.arc(t.x,t.y,t.r-9,0,Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fill();
+
+    // one icon per seated party, placed just outside its own seats
+    const bob = Math.sin(time*4)*3;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    t.seatedGroups.forEach(g=>{
+      const off = SEAT_OFFSETS[g.seatStart % SEAT_OFFSETS.length];
+      const ix = t.x + off.dx*1.75, iy = t.y + off.dy*1.75;
+      if (g.foodState === 'waiting_pizza'){
+        drawPizzaIcon(ix, iy+bob*0.4, 10);
+        ctx.font='800 14px ui-rounded, system-ui, sans-serif';
+        ctx.fillStyle='#e2482c';
+        ctx.fillText('!', ix+12, iy-10+bob*0.4);
+        // patience ring — drains as they wait, flips red when close to storming out
+        const ppct = clamp(g.patience / PATIENCE_LIMIT, 0, 1);
+        ctx.beginPath();
+        ctx.arc(ix, iy, 15, -Math.PI/2, -Math.PI/2 + ppct*Math.PI*2);
+        ctx.strokeStyle = ppct < 0.3 ? '#e2482c' : '#f2b705';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      } else if (g.foodState === 'eating'){
+        drawPlateIcon(ix, iy, 9, false);
+        const pct = 1 - (g.eatTimer / g.eatDuration);
+        ctx.beginPath();
+        ctx.arc(ix, iy, 13, -Math.PI/2, -Math.PI/2 + pct*Math.PI*2);
+        ctx.strokeStyle = '#f2b705';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      } else if (g.foodState === 'coins_ready'){
+        drawCoinStack(ix, iy+bob*0.6, 8);
+      }
+    });
+    // dirty-dish marker (aggregate, sits south of the table)
+    if (t.dirtyCount > 0){
+      drawPlateIcon(t.x, t.y+t.r+16, 9, true);
+      ctx.font='700 10px ui-rounded, system-ui, sans-serif';
+      ctx.fillStyle='#8a5a3a';
+      ctx.fillText('×'+t.dirtyCount, t.x+16, t.y+t.r+16);
+    }
+    ctx.restore();
+  }
+  function shade(colorKey){
+    return colorKey==='gray' ? '#c9cdd0' : COLORS[colorKey];
+  }
+
+  function drawGroupMembers(g){
+    // outside overflow renders smaller & muted — visible, but clearly not "in line" yet
+    const r = g.outside ? 6.5 : 9;
+    const alpha = g.outside ? 0.55 : 1;
+    g.members.forEach((m,i)=>{
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, r, 0, Math.PI*2);
+      ctx.fillStyle = COLORS[g.color];
+      ctx.fill();
+      ctx.lineWidth = g.outside ? 1.4 : 2;
+      ctx.strokeStyle = COLOR_DARK[g.color];
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  function drawPlayer(){
+    ctx.save();
+    // shadow
+    ctx.beginPath();
+    ctx.ellipse(player.x, player.y+15, 13, 5, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fill();
+    // body (apron) — bright accent so the character reads clearly against the floor
+    ctx.beginPath();
+    ctx.arc(player.x, player.y+2, 15, 0, Math.PI*2);
+    ctx.fillStyle = '#e2482c';
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#a5301b';
+    ctx.stroke();
+    // head
+    ctx.beginPath();
+    ctx.arc(player.x, player.y-6, 10, 0, Math.PI*2);
+    ctx.fillStyle = '#f2c49b';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#c98f5f';
+    ctx.stroke();
+    // toque
+    ctx.beginPath();
+    ctx.arc(player.x, player.y-15, 8, Math.PI, Math.PI*2);
+    ctx.rect(player.x-8, player.y-15, 16, 5);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle='#d8cfc4'; ctx.lineWidth=1; ctx.stroke();
+
+    // carried item
+    if (player.carrying === 'pizza'){
+      drawPizzaIcon(player.x, player.y-30, 10);
+    } else if (player.carrying === 'dishes'){
+      drawPlateIcon(player.x, player.y-30, 9, true);
+      if (player.dishCount > 1){
+        ctx.beginPath();
+        ctx.arc(player.x+10, player.y-37, 7, 0, Math.PI*2);
+        ctx.fillStyle = '#e2482c';
+        ctx.fill();
+        ctx.font = '700 9px ui-rounded, system-ui, sans-serif';
+        ctx.fillStyle = '#fff4ee';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(player.dishCount), player.x+10, player.y-36);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawLeadRope(){
+    if (!player.leading) return;
+    const g = player.leading;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(43,30,22,0.25)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5,5]);
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y);
+    if (g.members[0]) ctx.lineTo(g.members[0].x, g.members[0].y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawHUD(){
+    ctx.save();
+    ctx.fillStyle = getCss('--wall');
+    ctx.fillRect(0,0,WORLD_W,HUD_H);
+    ctx.fillStyle = '#f2b705';
+    ctx.font = '800 13px ui-rounded, system-ui';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = '800 20px system-ui';
+    ctx.fillText('$', 18, HUD_H/2);
+    ctx.font = '800 19px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillStyle = '#fff4ee';
+    ctx.fillText(String(money), 34, HUD_H/2+1);
+
+    ctx.textAlign='right';
+    ctx.font = '700 11px ui-rounded, system-ui';
+    ctx.fillStyle = '#c9b79f';
+    ctx.fillText('SERVED', WORLD_W-58, HUD_H/2-1);
+    ctx.font = '800 15px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillStyle = '#fff4ee';
+    ctx.fillText(String(served), WORLD_W-16, HUD_H/2+1);
+    ctx.restore();
+  }
+
+  function drawPopups(){
+    popups.forEach(p=>{
+      ctx.save();
+      ctx.globalAlpha = clamp(p.life,0,1);
+      ctx.font = '800 15px ui-rounded, system-ui';
+      ctx.fillStyle = p.color;
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.lineWidth = 3;
+      ctx.strokeText(p.text, p.x, p.y);
+      ctx.fillText(p.text, p.x, p.y);
+      ctx.restore();
+    });
+  }
+
+  let clockT = 0;
+  function draw(){
+    clockT += 1/60;
+    drawRoom();
+    drawStation(SPAWNER, 'pizza', 'PIZZA');
+    drawStation(WASHER, 'wash', 'WASH');
+    drawStation(TRASHCAN, 'trash', 'TRASH');
+    if (!bot.unlocked) drawBotStation();
+    tables.forEach(t=>drawTable(t, clockT));
+
+    // z-order: queue -> leading rope -> groups -> bot -> player
+    queue.forEach(drawGroupMembers);
+    groups.forEach(g=>{ if(g.state!=='leaving') drawGroupMembers(g); });
+    drawLeadRope();
+    groups.forEach(g=>{ if(g.state==='leaving') drawGroupMembers(g); });
+    drawBot();
+    drawPlayer();
+    drawPopups();
+    drawHUD();
+  }
+
+  // seed a couple of starting customers so the room isn't empty
+  spawnQueueGroup();
+  spawnQueueGroup();
+
+  requestAnimationFrame(frame);
+})();
+</script>

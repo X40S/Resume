@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stretchy Cat — Level Editor</title>
+<style>
+  :root{
+    --bg:#f3ede0; --ink:#4a3d2e; --ink-soft:#8a7b64; --accent:#ff8a65; --panel:#fffaf0;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:var(--bg); font-family: ui-rounded, "SF Pro Rounded", "Segoe UI Rounded", system-ui, sans-serif; color:var(--ink); overflow:hidden; }
+  #app{ position:relative; width:100%; height:100%; }
+  canvas{ display:block; touch-action:none; }
+
+  /* ---------- editor view ---------- */
+  #editor-view{ position:absolute; inset:0; display:flex; }
+  #sidebar{ width:260px; flex:0 0 auto; background:var(--panel); border-right:2px solid #e6dac2; padding:14px; overflow-y:auto; display:flex; flex-direction:column; gap:14px; }
+  #canvas-wrap{ flex:1 1 auto; display:flex; align-items:center; justify-content:center; overflow:auto; background:repeating-conic-gradient(#eee2cc 0% 25%, #e6dac2 0% 50%) 0 0/28px 28px; }
+  h1{ font-size:15px; margin:0 0 2px; }
+  h2.section{ font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); margin:0 0 6px; }
+  .tool-grid{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .tool-btn{ display:flex; align-items:center; gap:6px; border:2px solid transparent; background:#fff; border-radius:10px; padding:7px 8px; font-size:12px; font-weight:700; cursor:pointer; color:var(--ink); }
+  .tool-btn{ transition:transform .12s ease, box-shadow .12s ease, background .12s ease; }
+  .tool-btn:hover{ transform:translateY(-1px); box-shadow:0 3px 8px rgba(74,61,46,.12); }
+  .tool-btn.active{ border-color:var(--ink); background:#fff3e0; box-shadow:0 2px 6px rgba(74,61,46,.15); }
+  .swatch{ width:14px; height:14px; border-radius:50%; display:inline-block; flex:0 0 auto; box-shadow:inset 0 -2px 3px rgba(0,0,0,.18), 0 1px 2px rgba(0,0,0,.15); }
+  .row{ display:flex; gap:8px; align-items:center; }
+  .row label{ font-size:11px; font-weight:700; color:var(--ink-soft); flex:1; }
+  .row input[type=number]{ width:56px; padding:4px 6px; border-radius:6px; border:1px solid #e6dac2; font-size:12px; }
+  .row input[type=range]{ flex:1; accent-color:var(--ink); }
+  .row .val{ font-size:11px; font-weight:800; color:var(--ink); min-width:30px; text-align:right; }
+  button.action{ border:none; border-radius:10px; padding:8px 10px; font-size:12px; font-weight:700; cursor:pointer; background:#e9dfc9; color:var(--ink); transition:transform .12s ease, background .12s ease, box-shadow .12s ease; }
+  button.action:hover{ background:#e2d5b8; transform:translateY(-1px); box-shadow:0 3px 8px rgba(74,61,46,.15); }
+  button.action:active{ transform:translateY(0); }
+  button.primary{ background:var(--ink); color:#fff; box-shadow:0 3px 10px rgba(74,61,46,.25); }
+  button.primary:hover{ background:#3a2f23; }
+  textarea#json-area{ width:100%; height:150px; font-family:ui-monospace,monospace; font-size:11px; border-radius:8px; border:1px solid #e6dac2; padding:8px; resize:vertical; }
+  .status{ font-size:11px; font-weight:700; min-height:14px; }
+  .status.err{ color:#d1483a; }
+  .status.ok{ color:#3f9142; }
+  .hint-small{ font-size:10.5px; color:var(--ink-soft); line-height:1.4; }
+
+  /* ---------- shared test-mode HUD (from the game) ---------- */
+  .hud{ position:absolute; top:14px; left:14px; display:flex; flex-direction:column; gap:4px; background:rgba(74,61,46,.88); padding:9px 14px; border-radius:12px; color:#fff; font-size:12px; font-weight:700; pointer-events:none; }
+  .hud div{ display:flex; justify-content:space-between; gap:16px; min-width:150px; }
+  .hud b{ color:#ffd25a; }
+  .hint{ position:absolute; bottom:14px; left:50%; transform:translateX(-50%); font-size:12px; color:var(--ink-soft); font-weight:600; background:rgba(255,255,255,.8); padding:6px 14px; border-radius:999px; }
+  .title{ position:absolute; top:14px; right:14px; font-size:13px; font-weight:800; background:rgba(255,255,255,.85); padding:8px 14px; border-radius:12px; }
+  .overlay{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(20,14,9,.55); cursor:pointer; }
+  .overlay[hidden]{ display:none; }
+  .card{ background:#fffaf0; border-radius:20px; padding:26px 34px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.35); }
+  .card h2{ margin:0 0 6px; color:#d1483a; font-size:20px; }
+  .card p{ margin:0; color:var(--ink-soft); font-size:12px; font-weight:600; }
+  #back-to-editor{ position:absolute; top:14px; left:50%; transform:translateX(-50%); border:none; border-radius:999px; padding:9px 18px; font-size:12px; font-weight:800; cursor:pointer; background:var(--ink); color:#fff; }
+
+  #test-view{ position:absolute; inset:0; }
+  #test-view[hidden]{ display:none; }
+
+  /* ---------- mobile (portrait width OR landscape phone height) ---------- */
+  @media (max-width: 760px), (max-height: 500px){
+    #editor-view{ flex-direction:column; }
+    #sidebar{ width:100%; max-height:42vh; border-right:none; border-bottom:2px solid #e6dac2; padding:10px; gap:10px; }
+    #canvas-wrap{ flex:1 1 auto; min-height:0; }
+    h1{ font-size:14px; }
+    .hint-small{ font-size:10px; }
+    .tool-btn{ padding:6px 7px; font-size:11px; }
+    button.action, button.primary{ padding:7px 9px; font-size:11px; }
+    textarea#json-area{ height:100px; }
+
+    .hud{ top:8px; left:8px; padding:6px 10px; font-size:10px; gap:2px; }
+    .hud div{ min-width:96px; gap:8px; }
+    .title{ display:none; }
+    #back-to-editor{ left:auto; right:10px; top:10px; transform:none; padding:7px 12px; font-size:11px; }
+    .hint{ left:10px; right:10px; bottom:10px; transform:none; width:auto; font-size:10.5px; padding:6px 10px; text-align:center; }
+    .card{ padding:20px 22px; max-width:80vw; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============================= EDITOR VIEW ============================= -->
+  <div id="editor-view">
+    <div id="sidebar">
+      <div>
+        <h1>🐱 Stretchy Cat — Level Editor</h1>
+        <div class="hint-small">Click / drag on the grid to paint. Use Test to play the level right now.</div>
+      </div>
+
+      <button class="action primary" id="test-btn">▶ Test level</button>
+
+      <div>
+        <h2 class="section">Tools</h2>
+        <div class="tool-grid" id="tool-grid">
+          <button class="tool-btn" data-tool="start">🚩 Start</button>
+          <button class="tool-btn" data-tool="eraser">🧹 Eraser</button>
+          <button class="tool-btn" data-tool="wall">⬛ Wall</button>
+          <button class="tool-btn" data-tool="red"><span class="swatch" style="background:#ff6f61"></span>Red</button>
+          <button class="tool-btn" data-tool="blue"><span class="swatch" style="background:#6fa8ff"></span>Blue</button>
+          <button class="tool-btn" data-tool="green"><span class="swatch" style="background:#7bc47f"></span>Green</button>
+          <button class="tool-btn" data-tool="yellow"><span class="swatch" style="background:#ffd25a"></span>Yellow</button>
+        </div>
+      </div>
+
+      <div>
+        <h2 class="section">Grid size</h2>
+        <div class="row"><label>Width</label><input type="number" id="width-input" min="4" max="40" value="14"></div>
+        <div class="row"><label>Height</label><input type="number" id="height-input" min="4" max="40" value="14"></div>
+        <div class="row" style="margin-top:6px;"><button class="action" id="resize-btn" style="flex:1">Resize</button></div>
+      </div>
+
+      <div>
+        <h2 class="section">Gameplay</h2>
+        <div class="row">
+          <label>Energy limit</label>
+          <input type="range" id="energy-range" min="20" max="400" step="10" value="100">
+          <span class="val" id="energy-val">100</span>
+        </div>
+        <div class="hint-small">How far the cat can stretch before it snaps. Higher = more forgiving.</div>
+      </div>
+
+      <div class="row" style="gap:6px;">
+        <button class="action" id="clear-btn" style="flex:1">Clear level</button>
+        <button class="action" id="reset-btn" style="flex:1">Reset default</button>
+      </div>
+
+      <div>
+        <h2 class="section">Level JSON</h2>
+        <textarea id="json-area" spellcheck="false"></textarea>
+        <div class="row" style="margin-top:6px; gap:6px;">
+          <button class="action" id="copy-json-btn" style="flex:1">Copy</button>
+          <button class="action" id="load-json-btn" style="flex:1">Load</button>
+        </div>
+        <div class="status" id="status-msg"></div>
+      </div>
+    </div>
+
+    <div id="canvas-wrap">
+      <canvas id="editor-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- ============================== TEST VIEW =============================== -->
+  <div id="test-view" hidden>
+    <div class="title">🐱 Stretchy Cat — Test Mode</div>
+    <button id="back-to-editor">← Back to editor</button>
+    <div class="hud" id="hud">
+      <div>Energy <b id="hud-energy">100</b></div>
+      <div>Length <b id="hud-stretch">0.0</b></div>
+      <div>Blocks left <b id="hud-blocks">0</b></div>
+      <div>FPS <b id="hud-fps">0</b></div>
+    </div>
+    <div class="hint">Hold and drag the head to pull it — let go and it stops. The tail stays put, the body stretches thin between them</div>
+    <div class="overlay" id="overlay-lose" hidden>
+      <div class="card"><h2>SNAPPED!</h2><p>Stretched too thin — click to retry</p></div>
+    </div>
+  </div>
+
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ============================================================================
+// LEVEL DATA — same shape as the game file. `level` is mutable: the editor
+// below edits it directly, and Test mode always (re)builds itself from
+// whatever `level` currently holds.
+// ============================================================================
+const DEFAULT_LEVEL = {
+  width: 14, height: 14, start: { x: 2, y: 2 }, energyLimit: 100,
+  walls: [
+    {x:6,y:3},{x:7,y:3},{x:8,y:3},{x:8,y:4},{x:8,y:5},
+    {x:3,y:8},{x:3,y:9},{x:3,y:10},{x:4,y:10},{x:5,y:10},
+    {x:10,y:6},{x:10,y:7},{x:11,y:7},{x:11,y:8},
+  ],
+  blocks: [
+    {x:5,y:2,color:'red'},{x:6,y:2,color:'red'},
+    {x:11,y:3,color:'blue'},{x:12,y:3,color:'blue'},{x:11,y:4,color:'blue'},{x:12,y:4,color:'blue'},
+    {x:2,y:10,color:'green'},{x:3,y:11,color:'green'},
+    {x:9,y:10,color:'yellow'},{x:10,y:10,color:'yellow'},
+  ],
+};
+const STORAGE_KEY = 'stretchyCatLevel';
+const COLOR_HEX = { red:0xff6f61, blue:0x6fa8ff, green:0x7bc47f, yellow:0xffd25a };
+const COLOR_CSS = { red:'#ff6f61', blue:'#6fa8ff', green:'#7bc47f', yellow:'#ffd25a' };
+
+function cloneLevel(lvl){ return JSON.parse(JSON.stringify(lvl)); }
+function normalizeLevel(lvl){
+  if (typeof lvl.energyLimit !== 'number' || !isFinite(lvl.energyLimit)) lvl.energyLimit = 100;
+  lvl.energyLimit = Math.max(20, Math.min(400, lvl.energyLimit));
+  return lvl;
+}
+function loadInitialLevel(){
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw){
+      const parsed = JSON.parse(raw);
+      if (isValidLevel(parsed)) return normalizeLevel(parsed);
+    }
+  } catch(_){}
+  return cloneLevel(DEFAULT_LEVEL);
+}
+function isValidLevel(l){
+  return l && typeof l.width==='number' && typeof l.height==='number' &&
+    l.start && typeof l.start.x==='number' && typeof l.start.y==='number' &&
+    Array.isArray(l.walls) && Array.isArray(l.blocks);
+}
+function saveLevel(){
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(level)); } catch(_){}
+}
+
+let level = loadInitialLevel();
+
+function key(x,y){ return x+','+y; }
+function inBounds(lvl,x,y){ return x>=0 && y>=0 && x<lvl.width && y<lvl.height; }
+function buildIndex(lvl){
+  const wallSet = new Set(lvl.walls.map(w=>key(w.x,w.y)));
+  const blockMap = new Map(lvl.blocks.map(b=>[key(b.x,b.y), b]));
+  return { wallSet, blockMap };
+}
+function isWalkable(lvl, idx, x, y){
+  if (!inBounds(lvl,x,y)) return false;
+  if (idx.wallSet.has(key(x,y))) return false;
+  if (idx.blockMap.has(key(x,y))) return false;
+  return true;
+}
+
+// ============================================================================
+// 2D EDITOR
+// ============================================================================
+const editorCanvas = document.getElementById('editor-canvas');
+const ectx = editorCanvas.getContext('2d');
+const canvasWrap = document.getElementById('canvas-wrap');
+let currentTool = 'wall';
+let isPainting = false;
+
+function cellSize(){
+  const maxW = canvasWrap.clientWidth - 40, maxH = canvasWrap.clientHeight - 40;
+  return Math.max(12, Math.min(48, Math.floor(Math.min(maxW/level.width, maxH/level.height))));
+}
+
+function redrawEditor(){
+  const cs = cellSize();
+  editorCanvas.width = level.width*cs;
+  editorCanvas.height = level.height*cs;
+  ectx.fillStyle = '#f6ead9';
+  ectx.fillRect(0,0,editorCanvas.width,editorCanvas.height);
+
+  // grid lines
+  ectx.strokeStyle = '#e6dac2'; ectx.lineWidth = 1;
+  for (let x=0;x<=level.width;x++){ ectx.beginPath(); ectx.moveTo(x*cs+.5,0); ectx.lineTo(x*cs+.5,editorCanvas.height); ectx.stroke(); }
+  for (let y=0;y<=level.height;y++){ ectx.beginPath(); ectx.moveTo(0,y*cs+.5); ectx.lineTo(editorCanvas.width,y*cs+.5); ectx.stroke(); }
+
+  // walls
+  ectx.fillStyle = '#6b5947';
+  for (const w of level.walls) ectx.fillRect(w.x*cs+2, w.y*cs+2, cs-4, cs-4);
+
+  // blocks
+  for (const b of level.blocks){
+    ectx.fillStyle = COLOR_CSS[b.color] || '#999';
+    ectx.beginPath();
+    ectx.arc(b.x*cs+cs/2, b.y*cs+cs/2, cs*0.32, 0, Math.PI*2);
+    ectx.fill();
+  }
+
+  // start marker
+  ectx.fillStyle = '#3f9142';
+  ectx.beginPath();
+  ectx.arc(level.start.x*cs+cs/2, level.start.y*cs+cs/2, cs*0.36, 0, Math.PI*2);
+  ectx.fill();
+  ectx.fillStyle = '#fff';
+  ectx.font = `${Math.max(10,cs*0.4)}px sans-serif`;
+  ectx.textAlign = 'center'; ectx.textBaseline = 'middle';
+  ectx.fillText('S', level.start.x*cs+cs/2, level.start.y*cs+cs/2+1);
+}
+
+function cellFromEvent(e){
+  const rect = editorCanvas.getBoundingClientRect();
+  const cs = cellSize();
+  const gx = Math.floor((e.clientX-rect.left)/cs);
+  const gy = Math.floor((e.clientY-rect.top)/cs);
+  return { gx, gy };
+}
+
+function applyTool(gx,gy){
+  if (!inBounds(level,gx,gy)) return;
+  if (currentTool === 'start'){
+    level.walls = level.walls.filter(w=>!(w.x===gx&&w.y===gy));
+    level.blocks = level.blocks.filter(b=>!(b.x===gx&&b.y===gy));
+    level.start = { x:gx, y:gy };
+  } else if (gx===level.start.x && gy===level.start.y){
+    return; // never paint over the start cell with anything else
+  } else if (currentTool === 'eraser'){
+    level.walls = level.walls.filter(w=>!(w.x===gx&&w.y===gy));
+    level.blocks = level.blocks.filter(b=>!(b.x===gx&&b.y===gy));
+  } else if (currentTool === 'wall'){
+    if (!level.walls.some(w=>w.x===gx&&w.y===gy)){
+      level.blocks = level.blocks.filter(b=>!(b.x===gx&&b.y===gy));
+      level.walls.push({x:gx,y:gy});
+    }
+  } else {
+    level.walls = level.walls.filter(w=>!(w.x===gx&&w.y===gy));
+    const existing = level.blocks.find(b=>b.x===gx&&b.y===gy);
+    if (existing) existing.color = currentTool;
+    else level.blocks.push({x:gx,y:gy,color:currentTool});
+  }
+  redrawEditor(); syncJsonPanel(); saveLevel();
+}
+
+editorCanvas.addEventListener('pointerdown', (e)=>{
+  isPainting = true;
+  try{ editorCanvas.setPointerCapture(e.pointerId); }catch(_){}
+  const {gx,gy} = cellFromEvent(e);
+  applyTool(gx,gy);
+});
+editorCanvas.addEventListener('pointermove', (e)=>{
+  if (!isPainting) return;
+  const {gx,gy} = cellFromEvent(e);
+  applyTool(gx,gy);
+});
+window.addEventListener('pointerup', ()=>{ isPainting = false; });
+window.addEventListener('resize', redrawEditor);
+
+document.querySelectorAll('.tool-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tool-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentTool = btn.dataset.tool;
+  });
+});
+document.querySelector('.tool-btn[data-tool="wall"]').classList.add('active');
+
+function setStatus(msg, isErr){
+  const el = document.getElementById('status-msg');
+  el.textContent = msg;
+  el.className = 'status ' + (isErr ? 'err' : 'ok');
+  if (msg) setTimeout(()=>{ if (el.textContent===msg) el.textContent=''; }, 2500);
+}
+
+function syncSizeControls(){
+  document.getElementById('width-input').value = level.width;
+  document.getElementById('height-input').value = level.height;
+}
+function syncEnergyControl(){
+  document.getElementById('energy-range').value = level.energyLimit;
+  document.getElementById('energy-val').textContent = level.energyLimit;
+}
+
+syncSizeControls();
+document.getElementById('resize-btn').addEventListener('click', ()=>{
+  const w = Math.max(4, Math.min(40, parseInt(document.getElementById('width-input').value,10) || level.width));
+  const h = Math.max(4, Math.min(40, parseInt(document.getElementById('height-input').value,10) || level.height));
+  level.width = w; level.height = h;
+  level.walls = level.walls.filter(t=>t.x<w && t.y<h);
+  level.blocks = level.blocks.filter(t=>t.x<w && t.y<h);
+  level.start.x = Math.min(level.start.x, w-1);
+  level.start.y = Math.min(level.start.y, h-1);
+  syncSizeControls();
+  redrawEditor(); syncJsonPanel(); saveLevel();
+});
+
+document.getElementById('energy-range').addEventListener('input', (e)=>{
+  level.energyLimit = parseInt(e.target.value, 10);
+  document.getElementById('energy-val').textContent = level.energyLimit;
+  syncJsonPanel(); saveLevel();
+});
+
+document.getElementById('clear-btn').addEventListener('click', ()=>{
+  level.walls = []; level.blocks = [];
+  redrawEditor(); syncJsonPanel(); saveLevel();
+});
+document.getElementById('reset-btn').addEventListener('click', ()=>{
+  level = cloneLevel(DEFAULT_LEVEL);
+  syncSizeControls(); syncEnergyControl();
+  redrawEditor(); syncJsonPanel(); saveLevel();
+});
+
+function syncJsonPanel(){
+  document.getElementById('json-area').value = JSON.stringify(level, null, 2);
+}
+document.getElementById('copy-json-btn').addEventListener('click', async ()=>{
+  try{ await navigator.clipboard.writeText(document.getElementById('json-area').value); setStatus('Copied to clipboard.'); }
+  catch(_){ setStatus('Could not copy — select and copy manually.', true); }
+});
+document.getElementById('load-json-btn').addEventListener('click', ()=>{
+  try{
+    const parsed = JSON.parse(document.getElementById('json-area').value);
+    if (!isValidLevel(parsed)) throw new Error('missing width/height/start/walls/blocks');
+    level = normalizeLevel(parsed);
+    syncSizeControls(); syncEnergyControl();
+    redrawEditor(); saveLevel();
+    setStatus('Level loaded.');
+  } catch(err){ setStatus('Invalid JSON: ' + err.message, true); }
+});
+
+syncEnergyControl();
+syncJsonPanel();
+redrawEditor();
+
+// ============================================================================
+// GAME PHYSICS (identical engine to snake-pass.html) — parameterized on the
+// live `level` object so Test mode always reflects the current edit.
+// ============================================================================
+function maxEnergy(){ return level.energyLimit || 100; } // editable per-level in the sidebar
+const ENERGY_PER_UNIT = 2;
+const PULL_SPEED = 3.4;         // max cells/sec the head can be dragged at
+const HEAD_TURN_RATE = 9;
+const HEAD_RADIUS = 0.26;
+const SPINE_SAMPLE_SPACING = 0.22;
+const SELF_COLLIDE_IMMUNE_DIST = 0.85; // real arc-length behind the tip exempt from self-collision, not a point count
+const RETRACT_UNZIP_RATE = 3; // spine points removed per frame while unzipping a closed loop
+const RELAX_RATE_RELEASED_START = 0.14; // shrink speed right at the start
+const RELAX_RATE_RELEASED_MAX = 0.85;   // top shrink speed once fully ramped up
+const RELAX_RAMP_TIME = 0.8;            // seconds to reach full speed
+const RELAX_SUBSTEPS_RELEASED = 5;
+const RELAX_PRUNE_DIST = 0.03;
+
+function cellCenter(gx,gy){ return { x: gx + 0.5, z: gy + 0.5 }; }
+
+let idx = buildIndex(level);
+let game = null;
+function createGame(){
+  idx = buildIndex(level);
+  const c = cellCenter(level.start.x, level.start.y);
+  return {
+    head: { x:c.x, z:c.z },
+    anchor: { x:c.x, z:c.z },
+    headAngle: -Math.PI/2,
+    spine: [ { x:c.x, z:c.z } ],
+    body: [ { x:c.x, z:c.z } ],
+    energy: maxEnergy(),
+    bodyLength: 0,
+    steering: false,
+    steerTarget: { x:c.x, z:c.z },
+    idleTime: 0,
+    lost: false,
+    blocks: level.blocks.map(b=>({...b})),
+    retracting: false,
+    retractTargetLen: 0,
+    retractTouchPoint: null,
+  };
+}
+
+function easeAngle(cur, target, dt, rate){
+  let diff = (target-cur) % (Math.PI*2);
+  if (diff > Math.PI) diff -= Math.PI*2;
+  if (diff < -Math.PI) diff += Math.PI*2;
+  const k = 1-Math.exp(-rate*Math.max(dt,0));
+  return cur + diff*k;
+}
+
+function resolveCollisions(pos){
+  const cx = Math.floor(pos.x), cz = Math.floor(pos.z);
+  for (let gy=cz-1; gy<=cz+1; gy++){
+    for (let gx=cx-1; gx<=cx+1; gx++){
+      if (isWalkable(level, idx, gx, gy)) continue;
+      const closestX = Math.max(gx, Math.min(pos.x, gx+1));
+      const closestZ = Math.max(gy, Math.min(pos.z, gy+1));
+      const dx = pos.x-closestX, dz = pos.z-closestZ;
+      const distSq = dx*dx+dz*dz;
+      if (distSq < HEAD_RADIUS*HEAD_RADIUS){
+        const dist = Math.sqrt(distSq) || 1e-6;
+        const push = (HEAD_RADIUS-dist);
+        pos.x += (dx/dist)*push;
+        pos.z += (dz/dist)*push;
+      }
+    }
+  }
+  pos.x = Math.max(HEAD_RADIUS, Math.min(level.width-HEAD_RADIUS, pos.x));
+  pos.z = Math.max(HEAD_RADIUS, Math.min(level.height-HEAD_RADIUS, pos.z));
+}
+
+function closestPointOnSegment(px,pz, ax,az, bx,bz){
+  const abx=bx-ax, abz=bz-az;
+  const lenSq = abx*abx+abz*abz;
+  let t = lenSq>1e-9 ? ((px-ax)*abx+(pz-az)*abz)/lenSq : 0;
+  t = Math.max(0, Math.min(1,t));
+  return { x: ax+abx*t, z: az+abz*t };
+}
+
+// Two points can be close in a straight line while a wall sits between them
+// (e.g. the head has walked around one side of an obstacle and an older
+// stretch of its own body is resting against the other side). Self-collision
+// and self-touch must not fire across that gap, or the body treats the wall
+// as if it weren't there.
+function hasLineOfSight(x1,z1,x2,z2){
+  const dist = Math.hypot(x2-x1, z2-z1);
+  const steps = Math.max(1, Math.ceil(dist/0.09));
+  for (let s=0; s<=steps; s++){
+    const t = s/steps;
+    if (!isWalkable(level, idx, Math.floor(x1+(x2-x1)*t), Math.floor(z1+(z2-z1)*t))) return false;
+  }
+  return true;
+}
+
+// How far back along the spine (by real arc length from the live head, not
+// point count) is exempt from self-collision as "the natural curve right
+// behind the tip". Using distance instead of a fixed point count matters
+// because commits/retraction change local point density all the time — a
+// count-based window can drift past a genuinely-old touched segment (making
+// it "immune" and letting the head slip straight through it) just because a
+// few extra points got committed nearby while the head was pressed against it.
+function selfCollideLastCheckable(){
+  const spine = game.spine;
+  const n = spine.length;
+  if (n < 2) return -1;
+  let dist = Math.hypot(game.head.x-spine[n-1].x, game.head.z-spine[n-1].z);
+  if (dist > SELF_COLLIDE_IMMUNE_DIST) return n-2;
+  for (let k=n-1; k>=1; k--){
+    dist += Math.hypot(spine[k].x-spine[k-1].x, spine[k].z-spine[k-1].z);
+    if (dist > SELF_COLLIDE_IMMUNE_DIST) return k-2;
+  }
+  return -1;
+}
+
+function resolveSelfCollision(pos){
+  const spine = game.spine;
+  const lastCheckable = selfCollideLastCheckable();
+  if (lastCheckable < 0) return;
+  const r = HEAD_RADIUS + currentThickness();
+  for (let i=0; i<=lastCheckable; i++){
+    const a = spine[i], b = spine[i+1];
+    const cp = closestPointOnSegment(pos.x, pos.z, a.x, a.z, b.x, b.z);
+    const dx = pos.x-cp.x, dz = pos.z-cp.z;
+    const distSq = dx*dx+dz*dz;
+    if (distSq < r*r && hasLineOfSight(pos.x, pos.z, cp.x, cp.z)){
+      const dist = Math.sqrt(distSq) || 1e-6;
+      const push = r-dist;
+      pos.x += (dx/dist)*push;
+      pos.z += (dz/dist)*push;
+    }
+  }
+}
+
+// If the head runs into an OLDER stretch of its own body (the self-collision
+// above is what stops it passing through), that stretch retracts instead of
+// acting as a dead-end wall: the touched loop is cut away, shortening the
+// body and letting the head keep moving forward into the space the loop used
+// to occupy. It unzips gradually (a few points per frame) rather than
+// snapping away in one frame, since removing dozens of points instantly
+// makes the tube mesh jump-cut to a different shape. While that unzip is in
+// progress the head is held still — letting it keep advancing while the tail
+// is still catching up is what made the body look like it was cutting
+// through itself; freezing the head until the loop finishes retracting keeps
+// the two in sync.
+function detectSelfTouch(){
+  const lastCheckable = selfCollideLastCheckable();
+  if (lastCheckable < 0) return null;
+  const touchDist = HEAD_RADIUS + currentThickness() + 0.02;
+  const spine = game.spine;
+  let best = null;
+  for (let i=0; i<=lastCheckable; i++){
+    const a = spine[i], b = spine[i+1];
+    const cp = closestPointOnSegment(game.head.x, game.head.z, a.x, a.z, b.x, b.z);
+    const d = Math.hypot(game.head.x-cp.x, game.head.z-cp.z);
+    if (d < touchDist && (!best || i > best.i) && hasLineOfSight(game.head.x, game.head.z, cp.x, cp.z)) best = { i, x:cp.x, z:cp.z };
+  }
+  return best;
+}
+
+function stepRetraction(){
+  const spine = game.spine;
+  const targetLen = game.retractTargetLen;
+  if (spine.length > targetLen){
+    // Blindly chopping N points off the tail assumes that stretch was pure
+    // redundant slack. If it was actually routing around a wall, cutting it
+    // away leaves the new last point connected straight to the (frozen) head
+    // — a straight line that can cut right through the obstacle. Only take
+    // as many points as still leave that connection wall-safe; if even one
+    // point isn't safe to drop, stop here and keep the detour intact.
+    let removeCount = Math.min(RETRACT_UNZIP_RATE, spine.length - targetLen);
+    while (removeCount > 0){
+      const candidateLast = spine[spine.length - removeCount - 1];
+      if (hasLineOfSight(candidateLast.x, candidateLast.z, game.head.x, game.head.z)) break;
+      removeCount--;
+    }
+    if (removeCount === 0) return false; // can't safely retract any further from here
+    game.spine = spine.slice(0, spine.length - removeCount);
+  }
+  if (game.spine.length <= targetLen){
+    if (game.spine.length === targetLen){
+      const s = game.spine, prev = s[s.length-2], tp = game.retractTouchPoint;
+      // only snap to the precise touch point if that doesn't create a
+      // wall-crossing edge with its neighbor — the original point (already
+      // part of a validly-dragged path) is the safe fallback otherwise.
+      if (!prev || hasLineOfSight(prev.x, prev.z, tp.x, tp.z)) s[s.length-1] = tp;
+    }
+    return false; // fully unzipped
+  }
+  return true; // still going, call again next frame
+}
+
+function commitSpineIfNeeded(){
+  const spine = game.spine;
+  const last = spine[spine.length-1];
+  const d = Math.hypot(game.head.x-last.x, game.head.z-last.z);
+  if (d > SPINE_SAMPLE_SPACING) spine.push({ x: game.head.x, z: game.head.z });
+}
+
+// While the player isn't actively pulling, the body eases toward the
+// shortest path back to the head: every interior point pulls toward the
+// midpoint of its two neighbors (which shortens the whole path over time)
+// while still bouncing off walls, so it settles into wrapping around any
+// obstacle in its way instead of pulling through it.
+function relaxSpine(rate, substeps){
+  const spine = game.spine;
+  const pts = spine.concat([{ x: game.head.x, z: game.head.z }]);
+  const n = pts.length;
+  if (n < 3) return;
+  for (let iter=0; iter<substeps; iter++){
+    for (let i=1; i<n-1; i++){
+      const a = pts[i-1], b = pts[i], c = pts[i+1];
+      const tx = (a.x+c.x)/2, tz = (a.z+c.z)/2;
+      const candidate = { x: b.x + (tx-b.x)*rate, z: b.z + (tz-b.z)*rate };
+      resolveCollisions(candidate);
+      // Keeping the point itself out of a wall isn't enough — straightening
+      // it toward its neighbors can still pull it onto the far side of a
+      // wall from one of them, which cuts a corner straight through the
+      // obstacle instead of wrapping around it. Reject the step whenever
+      // either new edge would cross a wall; the point just holds its ground
+      // near the corner instead, which is exactly the "wrap around it" shape.
+      if (hasLineOfSight(a.x,a.z,candidate.x,candidate.z) && hasLineOfSight(candidate.x,candidate.z,c.x,c.z)){
+        pts[i].x = candidate.x; pts[i].z = candidate.z;
+      }
+    }
+  }
+}
+
+function pruneSpine(){
+  const spine = game.spine;
+  if (spine.length < 3) return;
+  const kept = [spine[0]];
+  for (let i=1; i<spine.length-1; i++){
+    const prev = kept[kept.length-1];
+    if (Math.hypot(spine[i].x-prev.x, spine[i].z-prev.z) > RELAX_PRUNE_DIST) kept.push(spine[i]);
+  }
+  kept.push(spine[spine.length-1]);
+  game.spine = kept;
+}
+
+function computeBodyLength(){
+  const s = game.spine;
+  let total = 0;
+  for (let i=1;i<s.length;i++) total += Math.hypot(s[i].x-s[i-1].x, s[i].z-s[i-1].z);
+  total += Math.hypot(game.head.x-s[s.length-1].x, game.head.z-s[s.length-1].z);
+  return total;
+}
+
+function rebuildVisualBody(){
+  const pts = game.spine.map(p => ({x:p.x, z:p.z}));
+  const last = pts[pts.length-1];
+  if (Math.hypot(last.x-game.head.x, last.z-game.head.z) > 1e-4) pts.push({ x: game.head.x, z: game.head.z });
+  game.body = pts;
+}
+
+// ---- loop / color-clear ----------------------------------------------------
+// Sample many points along the current curved body (finer than a cell) and
+// mark every cell any of those points falls in, so a closed loop the body has
+// curled into (it can't pass through itself — see resolveSelfCollision) forms
+// a sealed barrier of whole cells, the same way the original grid game's body
+// itself was the barrier.
+const RASTER_STEP = 0.15;
+function rasterizeBodyCells(){
+  const cells = new Set();
+  const pts = game.body;
+  const add = (x,z) => cells.add(key(Math.floor(x), Math.floor(z)));
+  for (let i=0;i<pts.length;i++){
+    add(pts[i].x, pts[i].z);
+    if (i===0) continue;
+    const a = pts[i-1], b = pts[i];
+    const dist = Math.hypot(b.x-a.x, b.z-a.z);
+    const steps = Math.max(1, Math.ceil(dist/RASTER_STEP));
+    for (let s=1;s<steps;s++){
+      const t = s/steps;
+      add(a.x+(b.x-a.x)*t, a.z+(b.z-a.z)*t);
+    }
+  }
+  return cells;
+}
+function findEnclosedRegions(barrier){
+  const w=level.width, h=level.height;
+  const outside = new Set();
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  function flood(sx,sy){
+    const sk=key(sx,sy);
+    if (barrier.has(sk) || outside.has(sk)) return;
+    const stack=[[sx,sy]]; outside.add(sk);
+    while(stack.length){
+      const [x,y]=stack.pop();
+      for (const [dx,dy] of dirs){
+        const nx=x+dx, ny=y+dy;
+        if (nx<0||ny<0||nx>=w||ny>=h) continue;
+        const nk=key(nx,ny);
+        if (barrier.has(nk)||outside.has(nk)) continue;
+        outside.add(nk); stack.push([nx,ny]);
+      }
+    }
+  }
+  for (let x=0;x<w;x++){ flood(x,0); flood(x,h-1); }
+  for (let y=0;y<h;y++){ flood(0,y); flood(w-1,y); }
+  const seen=new Set(), regions=[];
+  for (let x=0;x<w;x++) for (let y=0;y<h;y++){
+    const k=key(x,y);
+    if (barrier.has(k)||outside.has(k)||seen.has(k)) continue;
+    const region=[]; const stack=[[x,y]]; seen.add(k);
+    while(stack.length){
+      const [cx,cy]=stack.pop(); region.push({x:cx,y:cy});
+      for (const [dx,dy] of dirs){
+        const nx=cx+dx, ny=cy+dy;
+        if (nx<0||ny<0||nx>=w||ny>=h) continue;
+        const nk=key(nx,ny);
+        if (barrier.has(nk)||outside.has(nk)||seen.has(nk)) continue;
+        seen.add(nk); stack.push([nx,ny]);
+      }
+    }
+    regions.push(region);
+  }
+  return regions;
+}
+function clearColor(blocksToRemove){
+  const removedKeys = new Set(blocksToRemove.map(b=>key(b.x,b.y)));
+  game.blocks = game.blocks.filter(b => !removedKeys.has(key(b.x,b.y)));
+  for (const k of removedKeys){
+    const mesh = blockMeshes.get(k);
+    if (mesh){
+      scene.remove(mesh); mesh.geometry.dispose(); blockMeshes.delete(k);
+      blockAnimEntries = blockAnimEntries.filter(e => e.mesh !== mesh);
+    }
+    idx.blockMap.delete(k); // cleared blocks stop blocking movement too, not just rendering
+  }
+}
+function checkForColorClear(){
+  if (game.blocks.length===0) return;
+  const barrier = rasterizeBodyCells();
+  const regions = findEnclosedRegions(barrier);
+  const blockMap = new Map(game.blocks.map(b=>[key(b.x,b.y), b]));
+  const capturedByColor = {};
+  for (const region of regions){
+    const colors = new Set(); const blocksIn = [];
+    for (const cell of region){
+      const b = blockMap.get(key(cell.x,cell.y));
+      if (b){ colors.add(b.color); blocksIn.push(b); }
+    }
+    if (blocksIn.length===0 || colors.size!==1) continue;
+    const color = [...colors][0];
+    (capturedByColor[color] = capturedByColor[color] || []).push(...blocksIn);
+  }
+  for (const color of Object.keys(capturedByColor)){
+    const captured = capturedByColor[color];
+    const total = game.blocks.filter(b=>b.color===color).length;
+    if (captured.length === total) clearColor(captured);
+  }
+}
+
+function updateSnake(dt){
+  if (game.lost) return;
+  let loopJustClosed = false;
+  if (game.steering){
+    if (game.retracting){
+      // the enclosure is already sealed the instant contact happens (checked
+      // below, once, when the touch is first detected) — the multi-frame
+      // unzip only trims now-redundant points, it never changes what's
+      // enclosed, so there's no need to re-run the flood fill every frame.
+      game.retracting = stepRetraction();
+    } else {
+      const dx = game.steerTarget.x - game.head.x, dz = game.steerTarget.z - game.head.z;
+      const dist = Math.hypot(dx,dz);
+      if (dist > 1e-4){
+        const step = Math.min(dist, PULL_SPEED*dt);
+        const nx = game.head.x + (dx/dist)*step, nz = game.head.z + (dz/dist)*step;
+        const resolved = { x: nx, z: nz };
+        resolveCollisions(resolved);
+        resolveSelfCollision(resolved);
+        game.head.x = resolved.x; game.head.z = resolved.z;
+        commitSpineIfNeeded();
+        const touch = detectSelfTouch();
+        if (touch){
+          game.retracting = true;
+          game.retractTargetLen = touch.i + 1;
+          game.retractTouchPoint = { x: touch.x, z: touch.z };
+          loopJustClosed = true;
+        }
+      }
+    }
+  }
+  // the body keeps easing toward the shortest path at all times — pulling or
+  // idle — and that shrink speed itself keeps ramping up the longer it runs.
+  game.idleTime += dt;
+  const t = Math.min(1, game.idleTime / RELAX_RAMP_TIME);
+  const rate = RELAX_RATE_RELEASED_START + (RELAX_RATE_RELEASED_MAX - RELAX_RATE_RELEASED_START) * (t*t);
+  relaxSpine(rate, RELAX_SUBSTEPS_RELEASED);
+  pruneSpine();
+
+  game.bodyLength = computeBodyLength();
+  const me = maxEnergy();
+  game.energy = Math.max(0, Math.min(me, me - game.bodyLength*ENERGY_PER_UNIT));
+  if (game.energy <= 0) game.lost = true;
+  rebuildVisualBody();
+  // only test for an enclosed color once the head has genuinely touched its
+  // own body (a retraction just started or is in progress) — checking every
+  // frame off the coarse rasterized barrier alone can seal a still-open gap
+  // early, before the loop has actually closed.
+  if (loopJustClosed) checkForColorClear();
+}
+
+// ============================================================================
+// THREE.JS SCENE (built once; level-dependent content rebuilt on every Test entry)
+// ============================================================================
+const testView = document.getElementById('test-view');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf3ede0);
+scene.fog = new THREE.Fog(0xf3ede0, 22, 42);
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, 0.1, 100);
+const gridCenter = new THREE.Vector3(level.width/2, 0, level.height/2);
+function placeCamera(){
+  const aspect = camera.aspect || (window.innerWidth/window.innerHeight);
+  const dist = Math.max(level.width, level.height) * 1.05;
+  // On narrow/portrait screens the horizontal field of view shrinks with the
+  // aspect ratio, so the plain height-driven distance above crops the sides
+  // of the grid. Compute the distance that would be needed to keep the full
+  // grid WIDTH in frame at this aspect, and use whichever is larger — this
+  // leaves normal landscape/desktop framing untouched (width already fits
+  // there) while pulling the camera back further only when it's needed.
+  const vFovRad = camera.fov * Math.PI/180;
+  const camHeightForWidth = (level.width*1.05) / (2*Math.tan(vFovRad/2)*aspect);
+  const distForWidth = camHeightForWidth / 1.15;
+  const finalDist = Math.max(dist, distForWidth);
+  camera.position.set(gridCenter.x, finalDist*1.15, gridCenter.z + finalDist*0.34);
+  camera.lookAt(gridCenter);
+  // Fog range was tuned for the old fixed distance formula; on narrow
+  // screens finalDist can grow well past the default far plane, fogging the
+  // whole grid out to the background color. Keep the fog's look for the
+  // untouched (landscape) case but extend it whenever the camera sits
+  // further back than that.
+  const camDist = Math.hypot(finalDist*1.15, finalDist*0.34);
+  scene.fog.far = Math.max(42, camDist + 20);
+}
+
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+testView.appendChild(renderer.domElement);
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  if (!testView.hidden) placeCamera();
+});
+
+const hemi = new THREE.HemisphereLight(0xfff3e0, 0x6b5947, 0.75);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 1.15);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024,1024);
+sun.shadow.camera.left = -20; sun.shadow.camera.right = 20;
+sun.shadow.camera.top = 20; sun.shadow.camera.bottom = -20;
+sun.shadow.camera.far = 60;
+scene.add(sun, sun.target);
+
+function makeGroundTexture(){
+  const cell = 64;
+  const cvs = document.createElement('canvas');
+  cvs.width = level.width*cell; cvs.height = level.height*cell;
+  const ctx = cvs.getContext('2d');
+  // soft checkerboard tint instead of a flat fill, so the floor reads as a
+  // gentle tiled surface rather than a blank sheet with just grid lines
+  for (let gx=0; gx<level.width; gx++){
+    for (let gy=0; gy<level.height; gy++){
+      ctx.fillStyle = ((gx+gy)%2===0) ? '#f6ead9' : '#f2e4d3';
+      ctx.fillRect(gx*cell, gy*cell, cell, cell);
+    }
+  }
+  ctx.strokeStyle = '#e6dac2'; ctx.lineWidth = 2;
+  for (let x=0;x<=level.width;x++){ ctx.beginPath(); ctx.moveTo(x*cell,0); ctx.lineTo(x*cell,cvs.height); ctx.stroke(); }
+  for (let y=0;y<=level.height;y++){ ctx.beginPath(); ctx.moveTo(0,y*cell); ctx.lineTo(cvs.width,y*cell); ctx.stroke(); }
+  // soft vignette toward the outer edge for a bit of depth
+  const vignette = ctx.createRadialGradient(cvs.width/2, cvs.height/2, Math.min(cvs.width,cvs.height)*0.32, cvs.width/2, cvs.height/2, Math.max(cvs.width,cvs.height)*0.72);
+  vignette.addColorStop(0, 'rgba(107,89,71,0)');
+  vignette.addColorStop(1, 'rgba(107,89,71,0.14)');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0,0,cvs.width,cvs.height);
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+const wallGeo = new THREE.BoxGeometry(0.88, 0.62, 0.88);
+const wallMat = new THREE.MeshStandardMaterial({ color:0x6b5947, roughness:0.85 });
+const wallCapGeo = new THREE.BoxGeometry(0.72, 0.07, 0.72);
+const wallCapMat = new THREE.MeshStandardMaterial({ color:0x7d6a57, roughness:0.75 });
+const blockGeo = new THREE.CapsuleGeometry(0.26, 0.12, 4, 12);
+const blockMatCache = {};
+function blockMat(color){
+  if (!blockMatCache[color]) blockMatCache[color] = new THREE.MeshStandardMaterial({ color: COLOR_HEX[color], roughness:0.45, metalness:0.05 });
+  return blockMatCache[color];
+}
+
+let ground = null;
+let dynamicMeshes = [];
+let blockMeshes = new Map();
+let blockAnimEntries = [];
+function buildTestScene(){
+  if (ground){ scene.remove(ground); ground.geometry.dispose(); ground.material.map.dispose(); ground.material.dispose(); ground=null; }
+  for (const m of dynamicMeshes){ scene.remove(m); m.geometry.dispose(); }
+  dynamicMeshes = [];
+  blockMeshes.clear();
+  blockAnimEntries = [];
+
+  idx = buildIndex(level);
+  gridCenter.set(level.width/2, 0, level.height/2);
+  placeCamera();
+  sun.position.set(gridCenter.x - 6, 16, gridCenter.z + 8);
+  sun.target.position.copy(gridCenter);
+
+  const groundGeo = new THREE.PlaneGeometry(level.width, level.height);
+  const groundMat = new THREE.MeshStandardMaterial({ map: makeGroundTexture(), roughness:0.95 });
+  ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI/2;
+  ground.position.set(level.width/2, 0, level.height/2);
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  for (const w of level.walls){
+    const m = new THREE.Mesh(wallGeo, wallMat);
+    m.position.set(w.x+0.5, 0.31, w.y+0.5);
+    m.castShadow = true; m.receiveShadow = true;
+    scene.add(m); dynamicMeshes.push(m);
+    const cap = new THREE.Mesh(wallCapGeo, wallCapMat);
+    cap.position.set(w.x+0.5, 0.655, w.y+0.5);
+    cap.castShadow = true; cap.receiveShadow = true;
+    scene.add(cap); dynamicMeshes.push(cap);
+  }
+  let blockPhase = 0;
+  for (const b of level.blocks){
+    const m = new THREE.Mesh(blockGeo, blockMat(b.color));
+    m.rotation.z = Math.PI/2;
+    m.position.set(b.x+0.5, 0.26, b.y+0.5);
+    m.castShadow = true; m.receiveShadow = true;
+    scene.add(m); dynamicMeshes.push(m);
+    blockMeshes.set(key(b.x,b.y), m);
+    blockAnimEntries.push({ mesh:m, baseY:0.26, phase: blockPhase++ * 0.7 });
+  }
+
+  game = createGame();
+}
+
+function animateBlocks(elapsed){
+  for (const entry of blockAnimEntries){
+    entry.mesh.position.y = entry.baseY + Math.sin(elapsed*1.8 + entry.phase)*0.035;
+  }
+}
+
+const catBodyMat = new THREE.MeshStandardMaterial({ color:0xffcda0, roughness:0.5 });
+let catBodyMesh = null;
+const headGroup = new THREE.Group(); scene.add(headGroup);
+const furMat = new THREE.MeshStandardMaterial({ color:0xffcda0, roughness:0.5 });
+const innerEarMat = new THREE.MeshStandardMaterial({ color:0xffb3c6, roughness:0.6 });
+const eyeGeo = new THREE.SphereGeometry(0.045, 8, 8);
+const eyeMat = new THREE.MeshStandardMaterial({ color:0x2a2118 });
+const eyeShineGeo = new THREE.SphereGeometry(0.014, 6, 6);
+const eyeShineMat = new THREE.MeshStandardMaterial({ color:0xffffff, roughness:0.2, emissive:0x333333 });
+const noseGeo = new THREE.SphereGeometry(0.05, 8, 8);
+const noseMat = new THREE.MeshStandardMaterial({ color:0xff8fa3 });
+const blushGeo = new THREE.SphereGeometry(0.05, 10, 8);
+const blushMat = new THREE.MeshStandardMaterial({ color:0xffaebc, roughness:0.7, transparent:true, opacity:0.55 });
+const earGeo = new THREE.ConeGeometry(0.1, 0.16, 10);
+const innerEarGeo = new THREE.ConeGeometry(0.055, 0.09, 10);
+const headSphere = new THREE.Mesh(new THREE.SphereGeometry(0.3, 22, 18), furMat);
+headSphere.castShadow = true;
+const earL = new THREE.Mesh(earGeo, furMat), earR = new THREE.Mesh(earGeo, furMat);
+const earInnerL = new THREE.Mesh(innerEarGeo, innerEarMat), earInnerR = new THREE.Mesh(innerEarGeo, innerEarMat);
+const eyeL = new THREE.Mesh(eyeGeo, eyeMat), eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+const eyeShineL = new THREE.Mesh(eyeShineGeo, eyeShineMat), eyeShineR = new THREE.Mesh(eyeShineGeo, eyeShineMat);
+const blushL = new THREE.Mesh(blushGeo, blushMat), blushR = new THREE.Mesh(blushGeo, blushMat);
+blushL.scale.set(1,0.6,0.4); blushR.scale.set(1,0.6,0.4);
+const nose = new THREE.Mesh(noseGeo, noseMat);
+const whiskerMat = new THREE.LineBasicMaterial({ color:0xffffff, transparent:true, opacity:0.75 });
+function makeWhiskers(sideSign){
+  const group = new THREE.Group();
+  [ -0.05, 0, 0.05 ].forEach((yOff, idx)=>{
+    const spread = 0.16 + idx*0.03;
+    const pts = [ new THREE.Vector3(sideSign*0.06, yOff*0.4, 0.28), new THREE.Vector3(sideSign*(0.06+spread), yOff, 0.22) ];
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    group.add(new THREE.Line(geo, whiskerMat));
+  });
+  return group;
+}
+const whiskersL = makeWhiskers(-1), whiskersR = makeWhiskers(1);
+headGroup.add(headSphere, earL, earR, earInnerL, earInnerR, eyeL, eyeR, eyeShineL, eyeShineR, blushL, blushR, nose, whiskersL, whiskersR);
+[headSphere, earL, earR, earInnerL, earInnerR, eyeL, eyeR, nose, blushL, blushR].forEach(m=>{ m.castShadow=true; });
+
+function currentThickness(){
+  const frac = game.energy / maxEnergy();
+  return 0.34 * Math.max(0.22, frac) + 0.06;
+}
+
+function rebuildCatBody(){
+  const pts = game.body.map(p => new THREE.Vector3(p.x, 0.16, p.z));
+  if (catBodyMesh){ scene.remove(catBodyMesh); catBodyMesh.geometry.dispose(); catBodyMesh = null; }
+  const radius = currentThickness();
+  if (pts.length >= 2){
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.35);
+    // Capped rather than scaling linearly with point count — a long body
+    // doesn't need proportionally more tube segments to look smooth, and
+    // this mesh is rebuilt from scratch every single frame, so segment count
+    // is the single biggest cost in the whole simulation.
+    const tubularSegs = Math.max(8, Math.min(220, pts.length*4));
+    const geo = new THREE.TubeGeometry(curve, tubularSegs, radius, 8, false);
+    catBodyMesh = new THREE.Mesh(geo, catBodyMat);
+    catBodyMesh.castShadow = true; catBodyMesh.receiveShadow = true;
+    scene.add(catBodyMesh);
+  }
+
+  const head = game.body[game.body.length-1];
+  const prev = game.body.length>=2 ? game.body[game.body.length-2] : {x:head.x, z:head.z+1};
+  const rawAngle = Math.atan2(prev.z-head.z, prev.x-head.x) + Math.PI;
+  game.headAngle = easeAngle(game.headAngle, rawAngle, lastDt, HEAD_TURN_RATE);
+  headGroup.position.set(head.x, 0.22, head.z);
+  headGroup.rotation.y = -game.headAngle + Math.PI/2;
+  const r = radius*0.62;
+  const s = r/0.3; // every facial feature scales with the head, so a thin/stretched cat has a proportionally tiny face too
+  headSphere.scale.setScalar(s);
+
+  earL.position.set(-0.15*s, 0.22*s, -0.06*s);
+  earR.position.set(0.15*s, 0.22*s, -0.06*s);
+  earL.rotation.set(-0.15, 0, -0.32); earR.rotation.set(-0.15, 0, 0.32);
+  earL.scale.setScalar(s); earR.scale.setScalar(s);
+  earInnerL.position.set(earL.position.x, earL.position.y-0.015*s, earL.position.z+0.025*s);
+  earInnerR.position.set(earR.position.x, earR.position.y-0.015*s, earR.position.z+0.025*s);
+  earInnerL.rotation.copy(earL.rotation); earInnerR.rotation.copy(earR.rotation);
+  earInnerL.scale.setScalar(s*0.85); earInnerR.scale.setScalar(s*0.85);
+
+  eyeL.position.set(-0.11*s, 0.06*s, 0.24*s); eyeR.position.set(0.11*s, 0.06*s, 0.24*s);
+  eyeL.scale.setScalar(s); eyeR.scale.setScalar(s);
+  eyeShineL.position.set(-0.122*s, 0.075*s, 0.27*s); eyeShineR.position.set(0.098*s, 0.075*s, 0.27*s);
+  eyeShineL.scale.setScalar(s); eyeShineR.scale.setScalar(s);
+
+  blushL.position.set(-0.17*s, -0.03*s, 0.18*s); blushR.position.set(0.17*s, -0.03*s, 0.18*s);
+  blushL.scale.set(s, 0.6*s, 0.4*s); blushR.scale.set(s, 0.6*s, 0.4*s);
+
+  nose.position.set(0, -0.02*s, 0.3*s); nose.scale.setScalar(s);
+  whiskersL.scale.setScalar(s); whiskersR.scale.setScalar(s);
+}
+
+// ---- input ----
+const raycaster = new THREE.Raycaster();
+const mouseNDC = new THREE.Vector2();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+function pointerToGround(e){
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouseNDC.x = ((e.clientX-rect.left)/rect.width)*2-1;
+  mouseNDC.y = -((e.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouseNDC, camera);
+  const hit = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(groundPlane, hit)) return null;
+  return { x: hit.x, z: hit.z };
+}
+const HEAD_GRAB_RADIUS = 0.9; // must grab the head itself to start pulling, not just click anywhere
+renderer.domElement.addEventListener('pointerdown', (e)=>{
+  if (testView.hidden) return;
+  const pt = pointerToGround(e);
+  if (!pt) return;
+  if (Math.hypot(pt.x-game.head.x, pt.z-game.head.z) > HEAD_GRAB_RADIUS) return;
+  try { renderer.domElement.setPointerCapture(e.pointerId); } catch(_){}
+  game.steering = true;
+  game.steerTarget = pt;
+});
+renderer.domElement.addEventListener('pointermove', (e)=>{
+  if (!game || !game.steering) return;
+  const pt = pointerToGround(e);
+  if (pt) game.steerTarget = pt;
+});
+function endDrag(){ if (game) game.steering = false; }
+window.addEventListener('pointerup', endDrag);
+window.addEventListener('pointercancel', endDrag);
+
+function resetGame(){
+  buildTestScene();
+  document.getElementById('overlay-lose').hidden = true;
+}
+document.getElementById('overlay-lose').addEventListener('pointerdown', resetGame);
+
+// ---- edit <-> test toggling ----
+let rafHandle = null;
+let lastFrameTime = performance.now(), fpsSmooth = 60, lastDt = 1/60;
+
+function frame(now){
+  const dt = Math.min(0.05, (now-lastFrameTime)/1000);
+  lastFrameTime = now; lastDt = dt;
+  fpsSmooth += (1/Math.max(dt,1e-4) - fpsSmooth)*0.1;
+
+  updateSnake(dt);
+  rebuildCatBody();
+  animateBlocks(now/1000);
+
+  document.getElementById('hud-energy').textContent = Math.round(game.energy);
+  document.getElementById('hud-stretch').textContent = game.bodyLength.toFixed(1);
+  document.getElementById('hud-blocks').textContent = game.blocks.length;
+  document.getElementById('hud-fps').textContent = Math.round(fpsSmooth);
+  document.getElementById('overlay-lose').hidden = !game.lost;
+
+  renderer.render(scene, camera);
+  rafHandle = requestAnimationFrame(frame);
+}
+
+function enterTest(){
+  document.getElementById('editor-view').style.display = 'none';
+  testView.hidden = false;
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  buildTestScene();
+  lastFrameTime = performance.now();
+  if (!rafHandle) rafHandle = requestAnimationFrame(frame);
+}
+function exitTest(){
+  testView.hidden = true;
+  document.getElementById('editor-view').style.display = 'flex';
+  if (rafHandle){ cancelAnimationFrame(rafHandle); rafHandle = null; }
+  redrawEditor();
+}
+document.getElementById('test-btn').addEventListener('click', enterTest);
+document.getElementById('back-to-editor').addEventListener('click', exitTest);
+
+window.__debug = { get game(){ return game; }, get level(){ return level; }, scene, camera, updateSnake, rebuildCatBody, resetGame, enterTest, exitTest, buildTestScene, checkForColorClear, rasterizeBodyCells, findEnclosedRegions, relaxSpine, pruneSpine, detectSelfTouch, stepRetraction, selfCollideLastCheckable, hasLineOfSight };
+window.addEventListener('error', (e)=>{ window.__lastError = e.error ? (e.error.stack||e.error.message) : e.message; });
+</script>
+</body>
+</html>

@@ -1,0 +1,1746 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Burger Box Rush — Prototype</title>
+<style>
+  :root{
+    --bg:#1c1410;
+    --panel:#241a12;
+    --paper:#fff8ec;
+    --ink:#2b1e16;
+    --ink-soft:#6b5947;
+    --accent:#e2482c;
+    --accent-ink:#fff4ee;
+    --line: rgba(0,0,0,.12);
+    --slot-empty: rgba(0,0,0,.06);
+    --shadow: 0 18px 50px rgba(0,0,0,.35);
+    --wood:#8a5a34;
+    --wood-dark:#6e4526;
+    --board-bg:#fbe9c9;
+    --tile-a:#dcebee;
+    --tile-b:#cfe0e3;
+    --rope:#8a6a45;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; height:100%;
+    background: radial-gradient(120% 140% at 50% -10%, #2c1f14, var(--bg) 60%);
+    font-family: ui-rounded, "SF Pro Rounded", "Segoe UI Rounded", system-ui, -apple-system, sans-serif;
+    color:var(--ink);
+    overflow:hidden;
+    -webkit-tap-highlight-color: transparent;
+    user-select:none;
+  }
+  .stage{ height:100%; display:flex; align-items:center; justify-content:center; padding:14px; }
+  .cabinet{
+    position:relative;
+    width:min(430px, 100%);
+    height:min(900px, 100%);
+    display:flex; flex-direction:column;
+    border-radius:22px;
+    background: linear-gradient(180deg,#2c1f14,#1c1410);
+    box-shadow: var(--shadow), inset 0 0 0 1px rgba(255,255,255,.05);
+    padding:10px;
+  }
+  .titlebar{ display:flex; align-items:center; justify-content:space-between; padding:4px 8px 8px; gap:8px; }
+  .titlebar h1{ margin:0; font-size:15px; font-weight:800; color:var(--accent-ink); letter-spacing:.02em; white-space:nowrap; }
+  .titlebar h1 span{ color:#f2b705; }
+  .level-badge{ background:rgba(255,255,255,.12); color:var(--accent-ink); font-size:11px; font-weight:800; padding:5px 12px; border-radius:999px; white-space:nowrap; }
+  .titlebar .btns{ display:flex; gap:6px; }
+  .iconbtn{
+    background:rgba(255,255,255,.08); border:none; color:var(--accent-ink);
+    width:28px; height:28px; border-radius:8px; font-size:14px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .iconbtn:active{ background:rgba(255,255,255,.18); }
+
+  .screen{
+    position:relative;
+    flex:1;
+    display:flex; flex-direction:column;
+    border-radius:14px;
+    overflow:hidden;
+    background:var(--paper);
+    box-shadow: inset 0 0 0 3px rgba(0,0,0,.35);
+  }
+
+  /* ---- BOARD ---- */
+  .board-wrap{
+    flex: 0 0 auto; padding:10px 10px 8px;
+    background-image:
+      repeating-linear-gradient(0deg, var(--tile-a) 0 34px, var(--tile-b) 34px 35px),
+      repeating-linear-gradient(90deg, var(--tile-a) 0 34px, var(--tile-b) 34px 35px);
+  }
+  .board-label{ font-size:9px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); padding:0 2px 6px; display:flex; justify-content:space-between; }
+  .board{
+    display:grid;
+    gap:3px;
+    justify-content:center;
+    align-content:end; /* anchor to the bottom — overflow clips off the top, never the front row */
+    background:var(--board-bg);
+    border:5px solid var(--wood);
+    border-radius:16px;
+    padding:6px;
+    height:400px; /* fixed viewport: exactly 10 rows of 36px cells, whatever the level's real depth */
+    overflow:hidden;
+    overflow-x:auto;
+    box-shadow: 0 6px 14px rgba(0,0,0,.18);
+  }
+  .cell{
+    width:36px; height:36px;
+    border-radius:9px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px;
+    background: var(--slot-empty);
+    transition: transform .22s ease;
+  }
+  .cell.filled{ filter:saturate(.75) brightness(1.04); box-shadow: inset 0 -2px 0 rgba(0,0,0,.1); }
+  .cell.front{ outline: 2px solid rgba(226,72,44,.55); outline-offset:-2px; }
+
+  /* ---- WORKBENCH ---- */
+  .workbench-wrap{ flex:0 0 auto; padding:8px 10px; }
+  .workbench-label{ font-size:9px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); padding:0 2px 4px; }
+  .workbench{
+    width:100%;
+    display:grid;
+    gap:8px;
+  }
+  .wb-slot{
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    border:3px solid #d9bd8e; border-radius:12px;
+    padding:6px 4px; min-height:64px;
+    background: rgba(255,255,255,.5);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,.06);
+  }
+  .wb-slot.filled{ border-color:var(--accent); background:#fff; }
+  .wb-slot .wb-empty{ font-size:8px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-soft); text-align:center; }
+  .wb-icon{ font-size:22px; }
+  .wb-progress{ font-size:9px; font-weight:800; color:var(--ink); }
+  .wb-bar{ width:44px; height:5px; border-radius:4px; background:rgba(0,0,0,.12); overflow:hidden; }
+  .wb-bar > div{ height:100%; background:var(--accent); }
+
+  /* ---- ROAD: a rope with recipe cards clothes-pinned to it ---- */
+  .road-wrap{ flex:0 0 auto; padding:16px 14px 2px; position:relative; }
+  .rope-line{
+    position:absolute; left:14px; right:14px; top:14px; height:3px;
+    background:linear-gradient(90deg, var(--rope), #6e4f2f 50%, var(--rope));
+    border-radius:3px;
+    box-shadow:0 1px 1px rgba(0,0,0,.2);
+  }
+  .road{
+    display:flex; gap:10px; align-items:flex-start; overflow-x:auto;
+    padding:8px 2px 6px;
+  }
+  .truck{
+    position:relative;
+    background:var(--paper);
+    border-radius:8px 8px 13px 13px;
+    padding:12px 8px 8px;
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    min-width:74px; flex:0 0 auto;
+    box-shadow:0 6px 12px rgba(0,0,0,.28);
+    transition: transform .4s ease, opacity .4s ease;
+  }
+  .truck::before{
+    content:''; position:absolute; top:-9px; left:50%; transform:translateX(-50%);
+    width:13px; height:15px; border-radius:4px;
+    background:linear-gradient(180deg, #e0ac52, #b97f2c);
+    box-shadow:0 2px 3px rgba(0,0,0,.3);
+  }
+  .truck.complete{ opacity:.45; }
+  .truck .burger{ font-size:20px; }
+  .truck .reqs{ display:flex; flex-wrap:wrap; gap:2px; justify-content:center; max-width:80px; }
+  .req-icon{ font-size:13px; position:relative; opacity:1; }
+  .req-icon.done{ opacity:.25; }
+  .req-icon.done::after{ content:'✓'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:10px; color:#3f9142; font-weight:900; }
+
+  /* ---- TRAY: ingredient crates ---- */
+  .tray-wrap{ flex:1; overflow-y:auto; padding:6px 8px 10px; }
+  .tray-label{ font-size:9px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft); padding:2px 2px 4px; }
+  .tray-flex{ display:grid; justify-content:center; gap:10px 8px; }
+  .box{
+    position:relative;
+    border-radius:8px 8px 14px 14px;
+    background: linear-gradient(180deg, var(--crate-lt, #e7d3ae), var(--crate, #c79a5c));
+    box-shadow: 0 3px 0 rgba(0,0,0,.22), inset 0 -8px 0 rgba(0,0,0,.08), inset 0 2px 0 rgba(255,255,255,.35);
+    display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
+    padding:8px 2px 6px;
+    cursor:pointer;
+    gap:2px;
+    width:58px;
+    height:62px;
+    transition: transform .22s ease;
+  }
+  .box[data-type="tomato"]{ --crate:#d8523c; --crate-lt:#f0917f; }
+  .box[data-type="bun"]{ --crate:#c98a34; --crate-lt:#eec988; }
+  .box[data-type="cheese"]{ --crate:#e0ae2c; --crate-lt:#f6dd85; }
+  .box[data-type="lettuce"]{ --crate:#5a9e4e; --crate-lt:#a3d494; }
+  .box[data-type="onion"]{ --crate:#9068b0; --crate-lt:#cbb1e0; }
+  .box[data-type="patty"]{ --crate:#7a4f34; --crate-lt:#b8886a; }
+  .box .icon{
+    position:absolute; top:-9px; left:50%; transform:translateX(-50%);
+    font-size:16px; width:26px; height:26px; border-radius:50%;
+    background:#fff; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 2px 4px rgba(0,0,0,.3), inset 0 0 0 1px var(--line);
+  }
+  .box .prog{ font-size:8px; font-weight:800; color:#fff; text-shadow:0 1px 1px rgba(0,0,0,.35); }
+  .box .bar{ width:80%; height:4px; border-radius:3px; background:rgba(0,0,0,.18); overflow:hidden; }
+  .box .bar > div{ height:100%; background:#fff; }
+  .box:active{ transform: translateY(1px); }
+  .box.locked{ cursor:default; opacity:.55; filter:grayscale(.35); }
+  .box.locked:active{ transform:none; }
+
+  .fly-ingredient{
+    position:absolute; font-size:16px; pointer-events:none; z-index:15;
+    transform:translate(-50%,-50%) scale(1); opacity:1;
+    transition: left .26s ease-in, top .26s ease-in, transform .26s ease-in, opacity .26s ease-in;
+    will-change: left, top, transform, opacity;
+  }
+
+  .fly-box{
+    position:absolute; z-index:16; pointer-events:none;
+    width:40px; height:40px; border-radius:9px; background:#fff;
+    box-shadow:0 3px 10px rgba(0,0,0,.35), inset 0 0 0 1px var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:18px;
+    transform:translate(-50%,-50%); opacity:1;
+    transition: left .3s ease, top .3s ease;
+    will-change: left, top;
+  }
+
+  .toast{
+    position:absolute; left:50%; top:8px; transform:translateX(-50%);
+    background:rgba(20,14,9,.9); color:#fdf3e4; font-size:11px; font-weight:700;
+    padding:7px 12px; border-radius:999px; white-space:nowrap; pointer-events:none;
+    opacity:0; transition:opacity .25s ease, transform .25s ease; z-index:20;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(4px); }
+
+  /* ---- CONFIG PANEL ---- */
+  .panel-backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.5); display:none; align-items:center; justify-content:center; z-index:30; border-radius:14px; }
+  .panel-backdrop.show{ display:flex; }
+  .panel{ background:var(--paper); border-radius:12px; padding:14px; width:88%; max-height:80%; overflow-y:auto; }
+  .panel h2{ margin:0 0 10px; font-size:14px; }
+  .field{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; font-size:12px; }
+  .field input[type=number]{ width:56px; padding:4px; border-radius:6px; border:1px solid var(--line); }
+  .panel-actions{ display:flex; gap:8px; margin-top:12px; }
+  .panel-actions button{ flex:1; padding:8px; border-radius:8px; border:none; font-weight:800; cursor:pointer; }
+  .panel-actions .apply{ background:var(--accent); color:#fff; }
+  .panel-actions .close{ background:rgba(0,0,0,.08); }
+  .stats{ font-size:9px; color:var(--ink-soft); padding:0 2px; }
+  .panel.gameover h2{ color:var(--accent); }
+  .gameover-msg{ font-size:12px; color:var(--ink-soft); line-height:1.5; margin:0 0 12px; }
+
+  /* ---- LEVEL BUILDER ---- */
+  .builder-hint{ font-size:11px; color:var(--ink-soft); line-height:1.5; margin:0 0 12px; }
+  .builder-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+  .builder-row .b-label{ display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; }
+  .builder-row .b-emoji{ font-size:20px; }
+  .stepper{ display:flex; align-items:center; gap:8px; }
+  .stepper button{
+    width:28px; height:28px; border-radius:8px; border:none;
+    background:rgba(0,0,0,.08); font-size:16px; font-weight:800; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; color:var(--ink);
+  }
+  .stepper button:active{ background:rgba(0,0,0,.16); }
+  .stepper .b-count{ min-width:22px; text-align:center; font-weight:800; font-size:14px; }
+  .builder-total{ font-size:10px; color:var(--ink-soft); text-align:right; margin-top:2px; }
+
+  .panel-wide{ width:92%; }
+  .builder-section-title{ margin:16px 0 4px; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--ink); border-top:1px solid var(--line); padding-top:14px; }
+  .builder-section-title:first-of-type{ border-top:none; padding-top:0; margin-top:0; }
+
+  .palette{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .palette-swatch{
+    width:34px; height:34px; border-radius:8px; border:2px solid transparent;
+    background:rgba(0,0,0,.06); font-size:16px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .palette-swatch.active{ border-color:var(--accent); background:rgba(226,72,44,.12); }
+  .palette-swatch.eraser{ font-size:14px; color:var(--ink-soft); font-weight:900; }
+
+  .row-controls{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; font-size:11px; font-weight:700; color:var(--ink-soft); }
+  .row-controls-btns{ display:flex; gap:6px; }
+  .row-controls-btns button{
+    padding:5px 10px; border-radius:7px; border:none; background:rgba(0,0,0,.08);
+    font-size:11px; font-weight:800; cursor:pointer; color:var(--ink);
+  }
+  .row-controls-btns button:active{ background:rgba(0,0,0,.16); }
+
+  .editor-board-wrap{ overflow-x:auto; margin-bottom:8px; }
+  .editor-board{ display:grid; gap:2px; background:#e7d8bc; border-radius:8px; padding:4px; width:max-content; }
+  .editor-cell{
+    width:28px; height:28px; border-radius:4px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-size:12px;
+    background:var(--slot-empty);
+    touch-action:none;
+  }
+
+  .order-card{ border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:10px; background:rgba(0,0,0,.02); }
+  .order-card-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .order-card-title{ font-size:11px; font-weight:800; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.05em; }
+  .order-card-remove{ border:none; background:rgba(226,72,44,.12); color:var(--accent); font-size:10px; font-weight:800; padding:4px 9px; border-radius:7px; cursor:pointer; }
+  .add-order-btn{
+    width:100%; padding:9px; border-radius:8px; border:1px dashed var(--line);
+    background:transparent; color:var(--ink-soft); font-weight:800; font-size:12px; cursor:pointer; margin-bottom:4px;
+  }
+  .add-order-btn:active{ background:rgba(0,0,0,.05); }
+
+  .save-row{ display:flex; gap:6px; margin-bottom:10px; }
+  .save-row input{ flex:1; padding:8px 10px; border-radius:8px; border:1px solid var(--line); font-size:12px; }
+  .save-row button{ padding:8px 12px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-weight:800; font-size:12px; cursor:pointer; white-space:nowrap; }
+  .saved-level-item{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:8px 10px; border-radius:8px; background:rgba(0,0,0,.03); margin-bottom:6px;
+  }
+  .saved-level-name{ font-size:12px; font-weight:700; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .saved-level-actions{ display:flex; gap:5px; }
+  .saved-level-actions button{
+    border:none; border-radius:6px; padding:5px 8px; font-size:10px; font-weight:800; cursor:pointer;
+  }
+  .sl-load{ background:rgba(0,0,0,.08); color:var(--ink); }
+  .sl-play{ background:rgba(63,145,66,.15); color:#2c6b2f; }
+  .sl-export{ background:rgba(49,105,201,.15); color:#2555a3; }
+  .sl-delete{ background:rgba(226,72,44,.12); color:var(--accent); }
+  .saved-levels-empty{ font-size:11px; color:var(--ink-soft); padding:4px 2px 10px; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="cabinet">
+    <div class="titlebar">
+      <h1>🍔 Burger Box <span>Rush</span></h1>
+      <div class="level-badge" id="levelBadge">Level 1</div>
+      <div class="btns">
+        <button class="iconbtn" id="btnBuilder" title="Level builder">🛠</button>
+        <button class="iconbtn" id="btnConfig" title="Design settings">⚙</button>
+        <button class="iconbtn" id="btnRestart" title="Restart level">↻</button>
+      </div>
+    </div>
+    <div class="screen" id="screen">
+      <div class="toast" id="toast"></div>
+
+      <div class="road-wrap">
+        <div class="rope-line"></div>
+        <div class="road" id="road"></div>
+      </div>
+
+      <div class="board-wrap">
+        <div class="board-label"><span>Board</span><span id="boardStat"></span></div>
+        <div class="board" id="board"></div>
+      </div>
+
+      <div class="workbench-wrap">
+        <div class="workbench-label">Workbench</div>
+        <div class="workbench" id="workbench"></div>
+      </div>
+
+      <div class="tray-wrap">
+        <div class="tray-label">Ingredient Boxes — tap one to load the workbench</div>
+        <div class="tray-flex" id="tray"></div>
+      </div>
+
+      <div class="panel-backdrop" id="panelBackdrop">
+        <div class="panel">
+          <h2>Design Settings</h2>
+          <div class="field"><span>Box capacity</span><input type="number" id="cfgCap" min="2" max="20" /></div>
+          <div class="field"><span>Workbench slots</span><input type="number" id="cfgWbSlots" min="1" max="8" /></div>
+          <div class="panel-actions">
+            <button class="close" id="panelClose">Cancel</button>
+            <button class="apply" id="panelApply">Apply &amp; Restart</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-backdrop" id="builderBackdrop">
+        <div class="panel panel-wide">
+          <h2>Level Builder</h2>
+
+          <h3 class="builder-section-title">Board — paint each cell</h3>
+          <p class="builder-hint">Pick a brush, then tap cells. Board is always 10 columns wide; add/remove rows as needed. Gaps are compacted downward automatically when you press Play.</p>
+          <div class="palette" id="palette"></div>
+          <div class="row-controls">
+            <span id="editorRowCount">6 rows</span>
+            <div class="row-controls-btns">
+              <button type="button" id="editorRowMinus">− Row</button>
+              <button type="button" id="editorRowPlus">+ Row</button>
+              <button type="button" id="editorClear">Clear</button>
+            </div>
+          </div>
+          <div class="editor-board-wrap"><div class="editor-board" id="editorBoard"></div></div>
+
+          <h3 class="builder-section-title">Truck orders — one or more can be active together</h3>
+          <p class="builder-hint">Each card below is a separate truck, active at the same time as the others. If a full box could go to more than one, it's routed to whichever truck it helps finish.</p>
+          <div id="builderOrders"></div>
+          <button type="button" class="add-order-btn" id="builderAddOrder">+ Add Truck Order</button>
+
+          <h3 class="builder-section-title">Ingredient boxes (tray) — place each one yourself</h3>
+          <p class="builder-hint">Pick a brush, then tap a slot to place that box there. The exact order and grouping you lay out here is exactly what players see in the tray.</p>
+          <div class="palette" id="trayPalette"></div>
+          <div class="row-controls">
+            <span id="trayEditorRowCount">1 row</span>
+            <div class="row-controls-btns">
+              <button type="button" id="trayRowMinus">− Row</button>
+              <button type="button" id="trayRowPlus">+ Row</button>
+              <button type="button" id="trayEditorClear">Clear</button>
+            </div>
+          </div>
+          <div class="editor-board-wrap"><div class="editor-board" id="trayEditorBoard"></div></div>
+
+          <div class="panel-actions">
+            <button class="close" id="builderClose">Cancel</button>
+            <button class="apply" id="builderPlay">Play Level</button>
+          </div>
+
+          <h3 class="builder-section-title">Saved levels</h3>
+          <p class="builder-hint">Save this design, build a few more, then play them back one after another in save order.</p>
+          <div class="save-row">
+            <input type="text" id="saveNameInput" placeholder="Level name (e.g. Level 4)" />
+            <button type="button" id="saveLevelBtn">💾 Save</button>
+          </div>
+          <div id="savedLevelsList"></div>
+          <button type="button" class="add-order-btn" id="playSequenceBtn">▶ Play All In Sequence</button>
+          <p class="builder-hint">Send levels to someone else, or load levels they sent you, as a .json file.</p>
+          <div class="save-row">
+            <button type="button" id="exportAllBtn">⬇ Export All</button>
+            <button type="button" id="importBtn">⬆ Import File</button>
+            <input type="file" id="importFileInput" accept="application/json" style="display:none" />
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-backdrop" id="gameOverBackdrop">
+        <div class="panel gameover">
+          <h2>Game Over</h2>
+          <p class="gameover-msg">The workbench is full and none of those boxes match the front row anymore — no move left.</p>
+          <div class="panel-actions">
+            <button class="apply" id="gameOverRestart">Retry Level</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ============================================================
+  // DATA: ingredient definitions (placeholder art = emoji + color)
+  // ============================================================
+  const INGREDIENTS = {
+    bun:     { label:"Bun",     emoji:"🍞", color:"#e9c98f" },
+    patty:   { label:"Patty",   emoji:"🥩", color:"#b98a6f" },
+    tomato:  { label:"Tomato",  emoji:"🍅", color:"#f3b0a4" },
+    lettuce: { label:"Lettuce", emoji:"🥬", color:"#bfe3b0" },
+    cheese:  { label:"Cheese",  emoji:"🧀", color:"#f8dd8a" },
+    onion:   { label:"Onion",   emoji:"🧅", color:"#dcc3ea" },
+  };
+  const INGREDIENT_ORDER = ["bun","tomato","patty","cheese","lettuce","onion"];
+
+  // ============================================================
+  // LEVELS — the only levels in the game: 5 hand-designed defaults
+  // (full templates: exact board layout, tray layout, and one or
+  // more truck orders each). No procedural generation — after the
+  // last one, play just loops back to Level 1.
+  // ============================================================
+  const LEVELS = [
+    {
+      "columns": [
+        ["tomato","tomato","tomato","cheese","cheese","cheese"],
+        ["tomato","tomato","tomato","cheese","cheese","cheese"],
+        ["tomato","tomato","tomato","cheese","cheese","cheese"],
+        ["tomato","tomato","tomato","cheese","cheese","cheese"],
+        ["tomato","tomato","tomato","cheese","cheese","cheese"],
+        ["tomato","tomato","tomato","cheese","cheese","cheese"],
+        ["tomato","tomato","tomato","cheese","cheese","cheese"],
+        ["tomato","tomato","tomato","cheese","cheese","cheese"],
+        ["tomato","tomato","tomato","cheese","cheese","cheese"],
+        ["tomato","tomato","tomato","cheese","cheese","cheese"]
+      ],
+      "boardRows": 6,
+      "orders": [
+        { "requirements": [ {"type":"cheese","boxes":3} ] },
+        { "requirements": [ {"type":"tomato","boxes":3} ] }
+      ],
+      "trayLayout": [
+        ["tomato","tomato","tomato"],
+        ["cheese","cheese","cheese"]
+      ]
+    },
+    {
+      "columns": [
+        ["bun","patty","tomato","lettuce","tomato","bun"],
+        ["bun","patty","tomato","lettuce","tomato","bun"],
+        ["bun","patty","tomato","lettuce","tomato","bun"],
+        ["bun","patty","tomato","lettuce","tomato","bun"],
+        ["bun","patty","tomato","lettuce","tomato","bun"],
+        ["bun","patty","tomato","lettuce","tomato","bun"],
+        ["bun","patty","tomato","lettuce","tomato","bun"],
+        ["bun","patty","tomato","lettuce","tomato","bun"],
+        ["bun","patty","tomato","lettuce","tomato","bun"],
+        ["bun","patty","tomato","lettuce","tomato","bun"]
+      ],
+      "boardRows": 6,
+      "orders": [
+        { "requirements": [ {"type":"bun","boxes":1}, {"type":"tomato","boxes":1}, {"type":"patty","boxes":1} ] },
+        { "requirements": [ {"type":"bun","boxes":1}, {"type":"tomato","boxes":1}, {"type":"lettuce","boxes":1} ] }
+      ],
+      "trayLayout": [
+        ["tomato","bun","patty"],
+        ["lettuce","tomato","bun"]
+      ]
+    },
+    {
+      "columns": [
+        ["bun","tomato","cheese","patty","patty","lettuce","bun"],
+        ["bun","tomato","cheese","patty","patty","lettuce","bun"],
+        ["bun","tomato","cheese","patty","patty","lettuce","bun"],
+        ["bun","tomato","cheese","patty","patty","lettuce","bun"],
+        ["bun","tomato","cheese","patty","patty","lettuce","bun"],
+        ["bun","tomato","cheese","patty","patty","lettuce","bun"],
+        ["bun","tomato","cheese","patty","patty","lettuce","bun"],
+        ["bun","tomato","cheese","patty","patty","lettuce","bun"],
+        ["bun","tomato","cheese","patty","patty","lettuce","bun"],
+        ["bun","tomato","cheese","patty","patty","lettuce","bun"]
+      ],
+      "boardRows": 7,
+      "orders": [
+        { "requirements": [ {"type":"bun","boxes":1}, {"type":"tomato","boxes":1}, {"type":"patty","boxes":1}, {"type":"cheese","boxes":1} ] },
+        { "requirements": [ {"type":"bun","boxes":1}, {"type":"patty","boxes":1}, {"type":"lettuce","boxes":1} ] }
+      ],
+      "trayLayout": [
+        ["patty","cheese","lettuce"],
+        ["tomato","bun","patty"],
+        ["bun"]
+      ]
+    },
+    {
+      "columns": [
+        ["cheese","patty","cheese","bun","bun","lettuce","tomato","tomato","bun","bun"],
+        ["cheese","patty","cheese","bun","bun","lettuce","tomato","tomato","bun","bun"],
+        ["cheese","patty","cheese","bun","bun","lettuce","tomato","tomato","bun","bun"],
+        ["cheese","patty","cheese","bun","bun","lettuce","tomato","tomato","bun","bun"],
+        ["cheese","patty","cheese","bun","bun","lettuce","tomato","tomato","bun","bun"],
+        ["cheese","patty","cheese","onion","onion","lettuce","bun","bun","patty","patty"],
+        ["cheese","patty","cheese","onion","onion","lettuce","bun","bun","patty","patty"],
+        ["cheese","patty","cheese","onion","onion","lettuce","bun","bun","patty","patty"],
+        ["cheese","patty","cheese","onion","onion","lettuce","bun","bun","patty","patty"],
+        ["cheese","patty","cheese","onion","onion","lettuce","bun","bun","patty","patty"]
+      ],
+      "boardRows": 10,
+      "orders": [
+        { "requirements": [ {"type":"bun","boxes":1}, {"type":"patty","boxes":1}, {"type":"cheese","boxes":1}, {"type":"lettuce","boxes":1} ] },
+        { "requirements": [ {"type":"bun","boxes":1}, {"type":"tomato","boxes":1}, {"type":"cheese","boxes":1} ] },
+        { "requirements": [ {"type":"bun","boxes":1}, {"type":"patty","boxes":1}, {"type":"onion","boxes":1} ] }
+      ],
+      "trayLayout": [
+        ["onion","lettuce","bun"],
+        ["patty","bun","tomato"],
+        ["cheese","patty","cheese"],
+        ["bun"]
+      ]
+    },
+    {
+      "columns": [
+        ["bun","bun","tomato","tomato","patty","cheese","patty","patty","onion","bun","bun","tomato","onion","lettuce","onion"],
+        ["bun","bun","tomato","tomato","patty","cheese","patty","patty","onion","bun","bun","tomato","onion","lettuce","onion"],
+        ["bun","bun","tomato","tomato","patty","cheese","patty","patty","onion","bun","bun","tomato","onion","lettuce","onion"],
+        ["bun","bun","tomato","tomato","patty","cheese","patty","patty","onion","bun","bun","tomato","onion","lettuce","onion"],
+        ["bun","bun","tomato","tomato","patty","cheese","patty","patty","onion","bun","bun","tomato","onion","lettuce","onion"],
+        ["lettuce","lettuce","onion","onion","patty","cheese","bun","bun","onion","patty","patty","patty","patty","lettuce","tomato"],
+        ["lettuce","lettuce","onion","onion","patty","cheese","bun","bun","onion","patty","patty","patty","patty","lettuce","tomato"],
+        ["lettuce","lettuce","onion","onion","patty","cheese","bun","bun","onion","patty","patty","patty","patty","lettuce","tomato"],
+        ["lettuce","lettuce","onion","onion","patty","cheese","bun","bun","onion","patty","patty","patty","patty","lettuce","tomato"],
+        ["lettuce","lettuce","onion","onion","patty","cheese","bun","bun","onion","patty","patty","patty","patty","lettuce","tomato"]
+      ],
+      "boardRows": 15,
+      "orders": [
+        { "requirements": [ {"type":"bun","boxes":1}, {"type":"patty","boxes":1}, {"type":"cheese","boxes":1}, {"type":"onion","boxes":1} ] },
+        { "requirements": [ {"type":"bun","boxes":1}, {"type":"patty","boxes":1}, {"type":"lettuce","boxes":1}, {"type":"onion","boxes":1} ] },
+        { "requirements": [ {"type":"bun","boxes":1}, {"type":"tomato","boxes":1}, {"type":"patty","boxes":2}, {"type":"lettuce","boxes":1}, {"type":"onion","boxes":1} ] }
+      ],
+      "trayLayout": [
+        ["onion","bun","patty"],
+        ["cheese","patty","onion"],
+        ["onion","bun","lettuce"],
+        ["tomato","lettuce","patty"],
+        ["patty","bun","tomato"]
+      ]
+    }
+  ];
+
+  // only the curated LEVELS exist — no procedural generation. Once the
+  // last one is finished, this just loops back to Level 1.
+  function getLevel(index){
+    return LEVELS[index % LEVELS.length];
+  }
+
+  // ============================================================
+  // CONFIG: exposed / tunable for design iteration
+  // ============================================================
+  const CONFIG = {
+    boardCols: 10,     // always exactly 10 — depth (rows) flexes per level instead
+    boxCapacity: 10,
+    workbenchSlots: 4,
+    trayCols: 3,       // tray boxes always wrap at 3 per row, both in the editor and in-game
+  };
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  let columns = [];      // columns[c] = array of ingredient ids, index 0 = front (closest to workbench).
+                          // Board is finite: collected cells are gone for good, columns shrink.
+  let boardRows = 0;     // current level's column depth, derived from its total unit count
+  let trayBoxes = [];    // { id, type, count, capacity, out, consumed } — single-use: once
+                          // delivered a box is marked consumed and never returns to the tray.
+  let trayColumns = [];  // trayColumns[c] = still-in-tray box objects for that column, index 0
+                          // = topmost. A box's column never changes — picking one only ever
+                          // compacts the rest of ITS column upward, never sideways.
+  let workbenchBoxIds = []; // up to CONFIG.workbenchSlots box ids, in the order they were placed.
+                             // Once placed, a box cannot be removed — only delivered.
+  let currentLevelIndex = 0;
+  let customLevelActive = false; // true once a hand-built level (from the builder) is running
+  let customTemplate = null;     // { columns, boardRows, orders, trayLayout } for the active custom level
+  let customSequence = null;     // array of saved templates, when playing several custom levels back-to-back
+  let customSequenceIndex = 0;
+  let activeOrders = [];     // one or more simultaneously-active trucks: { requirements:[{type,boxes}], delivered:{type:count} }
+  let boxUid = 0;
+  let gameOver = false;
+
+  const screenEl = document.getElementById('screen');
+  const boardEl = document.getElementById('board');
+  const boardStatEl = document.getElementById('boardStat');
+  const workbenchEl = document.getElementById('workbench');
+  const roadEl = document.getElementById('road');
+  const trayEl = document.getElementById('tray');
+  const toastEl = document.getElementById('toast');
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(()=> toastEl.classList.remove('show'), 1400);
+  }
+
+  // ============================================================
+  // BOARD
+  // ============================================================
+  function frontRowTypes(){
+    // one entry per column that still has ingredients
+    return columns.map(col => col.length ? col[0] : null);
+  }
+
+  function renderBoard(){
+    boardEl.style.gridTemplateColumns = `repeat(${columns.length}, 36px)`;
+    boardEl.innerHTML = '';
+    // render from back (top) to front (bottom row, nearest workbench)
+    for(let r = boardRows - 1; r >= 0; r--){
+      for(let c = 0; c < columns.length; c++){
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        const type = columns[c][r];
+        if(type){
+          cell.classList.add('filled');
+          cell.style.background = INGREDIENTS[type].color;
+          cell.textContent = INGREDIENTS[type].emoji;
+        }
+        if(r === 0) cell.classList.add('front');
+        boardEl.appendChild(cell);
+      }
+    }
+    const remaining = columns.reduce((s,col)=>s+col.length,0);
+    boardStatEl.textContent = `${remaining} left`;
+  }
+
+  // ============================================================
+  // TRAY / BOXES — each box is a single-use resource: once
+  // delivered it's gone for good, it never returns to the tray.
+  // The tray only ever offers exactly the boxes a level needs
+  // (requirement.boxes per type) — no irrelevant options to pick.
+  // ============================================================
+  function makeBox(type){
+    return { id: ++boxUid, type, count:0, capacity: CONFIG.boxCapacity, out:false, consumed:false, landed:false };
+  }
+
+  // for hand-arranged custom levels: one box per entry, placed in the exact
+  // column the player painted it into — that column layout is preserved
+  // and rendered identically in the live game.
+  function generateTrayFromLayout(trayRows){
+    trayBoxes = [];
+    const cols = [];
+    for(let c=0;c<CONFIG.trayCols;c++) cols.push([]);
+    trayRows.forEach(rowTypes => {
+      rowTypes.forEach((type, c) => {
+        if(c >= CONFIG.trayCols) return;
+        const box = makeBox(type);
+        trayBoxes.push(box);
+        cols[c].push(box);
+      });
+    });
+    trayColumns = cols;
+  }
+
+  // removes a picked box from the tray's column stacks — everything below
+  // it in that SAME column shifts up to close the gap; other columns never move
+  function removeFromTrayColumns(box){
+    for(let c=0;c<trayColumns.length;c++){
+      const idx = trayColumns[c].indexOf(box);
+      if(idx !== -1){ trayColumns[c].splice(idx, 1); return; }
+    }
+  }
+
+  function renderTray(){
+    // capture where every still-visible box currently sits, so once one
+    // leaves, the rest of ITS column can slide up (never sideways) into
+    // its old spot instead of snapping straight there.
+    const oldRects = {};
+    trayEl.querySelectorAll('.box[data-box-id]').forEach(el => {
+      oldRects[el.dataset.boxId] = el.getBoundingClientRect();
+    });
+
+    trayEl.innerHTML = '';
+    trayEl.style.gridTemplateColumns = `repeat(${CONFIG.trayCols}, auto)`;
+    trayColumns.forEach((col, c) => {
+      col.forEach((box, r) => {
+        const el = renderBoxEl(box, r === 0); // only the top of each column is pickable
+        if(!el) return;
+        el.style.gridColumn = c + 1;
+        el.style.gridRow = r + 1;
+        trayEl.appendChild(el);
+      });
+    });
+
+    trayEl.querySelectorAll('.box[data-box-id]').forEach(el => {
+      const old = oldRects[el.dataset.boxId];
+      if(!old) return;
+      const now = el.getBoundingClientRect();
+      const dy = old.top - now.top; // columns never move horizontally — vertical only
+      if(!dy) return;
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${dy}px)`;
+      setTimeout(() => {
+        el.style.transition = 'transform .22s ease';
+        el.style.transform = '';
+      }, 20);
+    });
+  }
+
+  // once a box is picked up (out) or delivered (consumed) it's no longer
+  // in trayColumns at all, so it's simply never rendered again. Only the
+  // top-most box in each column is pickable — same rule as the board's
+  // front row; boxes stacked behind it are locked until it's cleared.
+  function renderBoxEl(box, isTop){
+    if(box.consumed || box.out) return null;
+    const el = document.createElement('div');
+    el.className = 'box' + (isTop ? '' : ' locked');
+    el.dataset.boxId = box.id;
+    el.dataset.type = box.type;
+    const ing = INGREDIENTS[box.type];
+    el.innerHTML = `
+      <div class="icon">${ing.emoji}</div>
+      <div class="prog">${box.count}/${box.capacity}</div>
+      <div class="bar"><div style="width:${(box.count/box.capacity*100)}%"></div></div>
+    `;
+    if(isTop) el.addEventListener('click', () => onBoxClicked(box.id));
+    return el;
+  }
+
+  // ============================================================
+  // WORKBENCH (up to CONFIG.workbenchSlots boxes at once)
+  // ============================================================
+  function renderWorkbench(){
+    workbenchEl.innerHTML = '';
+    workbenchEl.style.gridTemplateColumns = `repeat(${CONFIG.workbenchSlots}, 1fr)`;
+    for(let i=0;i<CONFIG.workbenchSlots;i++){
+      const boxId = workbenchBoxIds[i];
+      const box = boxId !== undefined ? trayBoxes.find(b => b.id === boxId) : null;
+      const slot = document.createElement('div');
+      slot.className = 'wb-slot';
+      if(!box || !box.landed){
+        // reserved but still flying in from the tray — keep showing empty
+        // until it visually lands, so rapid clicks never look wrong
+        slot.innerHTML = `<div class="wb-empty">Empty</div>`;
+      } else {
+        const ing = INGREDIENTS[box.type];
+        slot.classList.add('filled');
+        slot.innerHTML = `
+          <div class="wb-icon">${ing.emoji}</div>
+          <div class="wb-progress">${box.count}/${box.capacity}</div>
+          <div class="wb-bar"><div style="width:${(box.count/box.capacity*100)}%"></div></div>
+        `;
+      }
+      workbenchEl.appendChild(slot);
+    }
+  }
+
+  function onBoxClicked(boxId){
+    if(gameOver) return;
+    const box = trayBoxes.find(b => b.id === boxId);
+    if(!box || box.consumed) return;
+    if(workbenchBoxIds.includes(boxId)) return;
+    // only the top-most box in its column can ever be picked
+    if(!trayColumns.some(col => col[0] === box)) return;
+    if(workbenchBoxIds.length >= CONFIG.workbenchSlots){
+      toast(`Workbench full — max ${CONFIG.workbenchSlots} boxes`);
+      return;
+    }
+
+    const sourceEl = trayEl.querySelector(`[data-box-id="${box.id}"]`);
+    const targetSlotEl = workbenchEl.children[workbenchBoxIds.length]; // still-empty slot it will land in
+
+    // reserve the slot immediately (not after the flight lands) so clicking
+    // several boxes back-to-back never races for the same slot or wrongly
+    // reports "full" — the workbench just keeps showing "Empty" until landed
+    workbenchBoxIds.push(box.id);
+    box.out = true;
+    removeFromTrayColumns(box);
+
+    function land(){
+      box.landed = true;
+      renderWorkbench();
+      startCollectLoop();
+    }
+
+    if(sourceEl && targetSlotEl){
+      const fromRect = sourceEl.getBoundingClientRect();
+      const toRect = targetSlotEl.getBoundingClientRect();
+      renderTray();  // picked up — vanish from the tray right away
+      flyBoxGhost(INGREDIENTS[box.type].emoji, fromRect, toRect, land);
+    } else {
+      renderTray();
+      land();
+    }
+  }
+
+  // animates a box-shaped ghost flying between two rects (tray -> workbench,
+  // or later workbench -> truck), calling onDone once it lands
+  function flyBoxGhost(emoji, fromRect, toRect, onDone){
+    const screenRect = screenEl.getBoundingClientRect();
+    const ghost = document.createElement('div');
+    ghost.className = 'fly-box';
+    ghost.textContent = emoji;
+    ghost.style.left = (fromRect.left - screenRect.left + fromRect.width/2) + 'px';
+    ghost.style.top = (fromRect.top - screenRect.top + fromRect.height/2) + 'px';
+    screenEl.appendChild(ghost);
+    setTimeout(() => {
+      ghost.style.left = (toRect.left - screenRect.left + toRect.width/2) + 'px';
+      ghost.style.top = (toRect.top - screenRect.top + toRect.height/2) + 'px';
+    }, 20);
+    setTimeout(() => {
+      ghost.remove();
+      if(onDone) onDone();
+    }, 300);
+  }
+
+  // ============================================================
+  // CORE MECHANIC: front-row auto-collect, shared across every
+  // box currently sitting on the workbench. The board is finite —
+  // collected cells are gone for good, columns just get shorter.
+  // Collection is paced one round per tick (not instant) so a box
+  // never jumps straight to full the moment it's placed.
+  // ============================================================
+  const COLLECT_TICK_MS = 220;
+  let collectLoopActive = false;
+  let pendingDeliveries = 0; // full boxes currently mid-flight to their truck
+
+  function startCollectLoop(){
+    if(collectLoopActive) return;
+    collectLoopActive = true;
+    collectTick();
+  }
+
+  // finds the currently-rendered DOM cell for a column's front (bottom) row,
+  // used to capture a fly-animation's starting position before the board re-renders
+  function getBoardFrontCellEl(c){
+    const idx = (boardRows - 1) * columns.length + c;
+    return boardEl.children[idx] || null;
+  }
+
+  function getBoardCellEl(r, c){
+    const idx = (boardRows - 1 - r) * columns.length + c;
+    return boardEl.children[idx] || null;
+  }
+
+  // after cells are removed from the front of some columns, the remaining
+  // cells above them are now rendered one (or more) rows lower — slide them
+  // down from their old spot into the new one instead of snapping in place
+  function animateBoardShift(removedCounts){
+    if(columns.length === 0 || boardRows < 2) return;
+    const a = boardEl.children[0];
+    const b = boardEl.children[columns.length];
+    if(!a || !b) return;
+    const rowStep = b.getBoundingClientRect().top - a.getBoundingClientRect().top;
+    if(!rowStep) return;
+    const moved = [];
+    for(let c=0;c<columns.length;c++){
+      const removed = removedCounts[c];
+      if(!removed) continue;
+      for(let r=0;r<columns[c].length;r++){
+        const cell = getBoardCellEl(r, c);
+        if(cell){
+          cell.style.transform = `translateY(${-removed*rowStep}px)`;
+          moved.push(cell);
+        }
+      }
+    }
+    setTimeout(() => {
+      moved.forEach(cell => { cell.style.transform = ''; });
+    }, 20);
+  }
+
+  function collectTick(){
+    const fronts = frontRowTypes();
+    let progressed = false;
+    const fullBoxes = [];
+    const flights = []; // { type, fromRect, boxId }
+    const removedCounts = new Array(columns.length).fill(0);
+
+    for(let c=0;c<fronts.length;c++){
+      const type = fronts[c];
+      if(type === null) continue;
+      const box = workbenchBoxIds
+        .map(id => trayBoxes.find(b => b.id === id))
+        .find(b => b.landed && b.type === type && b.count < b.capacity);
+      if(box){
+        const cellEl = getBoardFrontCellEl(c);
+        if(cellEl) flights.push({ type, fromRect: cellEl.getBoundingClientRect(), boxId: box.id });
+        columns[c].shift();      // ingredient falls into the box, one round at a time
+        removedCounts[c]++;
+        box.count++;
+        progressed = true;
+        if(box.count >= box.capacity) fullBoxes.push(box);
+      }
+    }
+
+    if(progressed){
+      renderBoard();
+      animateBoardShift(removedCounts); // remaining cells slide down into the gap left behind
+      spawnFlights(flights); // workbench DOM hasn't been touched yet this tick — positions are valid
+    }
+    renderWorkbench();
+    renderTray();
+
+    // let the last ingredient's flight visually land before the full box
+    // itself flies off to its truck — captured now, while its workbench
+    // slot still exists, but sent after a short beat for the right feel
+    fullBoxes.forEach(box => {
+      pendingDeliveries++;
+      setTimeout(() => sendBoxToTruck(box), 300);
+    });
+
+    if(progressed && workbenchBoxIds.length > 0){
+      setTimeout(collectTick, COLLECT_TICK_MS);
+    } else {
+      collectLoopActive = false;
+      if(pendingDeliveries === 0) checkDeadlock();
+    }
+  }
+
+  // animates each collected ingredient flying from its board cell into the
+  // workbench slot that received it, one at a time (staggered "pop pop pop"),
+  // not all of the front row at once
+  const FLIGHT_STAGGER_MS = 70;
+
+  function spawnFlights(flights){
+    const screenRect = screenEl.getBoundingClientRect();
+    flights.forEach((f, i) => {
+      setTimeout(() => spawnOneFlight(f, screenRect), i * FLIGHT_STAGGER_MS);
+    });
+  }
+
+  function spawnOneFlight(f, screenRect){
+    const slotIdx = workbenchBoxIds.indexOf(f.boxId);
+    const slotEl = slotIdx >= 0 ? workbenchEl.children[slotIdx] : null;
+    if(!slotEl) return;
+    const toRect = slotEl.getBoundingClientRect();
+    const fly = document.createElement('div');
+    fly.className = 'fly-ingredient';
+    fly.textContent = INGREDIENTS[f.type].emoji;
+    fly.style.left = (f.fromRect.left - screenRect.left + f.fromRect.width/2) + 'px';
+    fly.style.top = (f.fromRect.top - screenRect.top + f.fromRect.height/2) + 'px';
+    screenEl.appendChild(fly);
+    setTimeout(() => {
+      fly.style.left = (toRect.left - screenRect.left + toRect.width/2) + 'px';
+      fly.style.top = (toRect.top - screenRect.top + toRect.height/2) + 'px';
+      fly.style.transform = 'translate(-50%,-50%) scale(.25)';
+      fly.style.opacity = '0.15';
+    }, 20);
+    setTimeout(() => fly.remove(), 300);
+  }
+
+  function checkDeadlock(){
+    if(gameOver) return;
+    if(workbenchBoxIds.length < CONFIG.workbenchSlots) return;
+    const fronts = frontRowTypes();
+    const activeTypes = new Set(workbenchBoxIds.map(id => trayBoxes.find(b => b.id === id).type));
+    const canProgress = fronts.some(t => t !== null && activeTypes.has(t));
+    if(!canProgress) triggerGameOver();
+  }
+
+  function triggerGameOver(){
+    gameOver = true;
+    gameOverBackdrop.classList.add('show');
+  }
+
+  // when a completed box's type is needed by more than one active truck,
+  // route it to whichever truck the delivery helps most: first preference
+  // to a truck this delivery would fully complete, then to whichever
+  // truck has the fewest boxes left overall (closest to completion).
+  function pickDeliveryTarget(type){
+    const candidates = activeOrders.filter(t => {
+      const req = t.requirements.find(r => r.type === type);
+      return req && (t.delivered[type]||0) < req.boxes;
+    });
+    if(candidates.length === 0) return null;
+    const remaining = t => t.requirements.reduce((s,r)=> s + Math.max(0, r.boxes - (t.delivered[r.type]||0)), 0);
+    candidates.sort((a,b) => {
+      const aFinishes = remaining(a) === 1 ? 0 : 1;
+      const bFinishes = remaining(b) === 1 ? 0 : 1;
+      if(aFinishes !== bFinishes) return aFinishes - bFinishes;
+      return remaining(a) - remaining(b);
+    });
+    return candidates[0];
+  }
+
+  // a full box flies from its workbench slot to the truck that needs it,
+  // then (once landed) actually delivers — state only changes after the
+  // animation completes, so the box visibly travels there first
+  function sendBoxToTruck(box){
+    pendingDeliveries--;
+    const target = pickDeliveryTarget(box.type);
+    const slotIdx = workbenchBoxIds.indexOf(box.id);
+    const slotEl = slotIdx >= 0 ? workbenchEl.children[slotIdx] : null;
+    const truckIdx = target ? activeOrders.indexOf(target) : -1;
+    const truckEl = truckIdx >= 0 ? roadEl.children[truckIdx] : null;
+
+    function finalize(){
+      if(target){
+        target.delivered[box.type] = (target.delivered[box.type] || 0) + 1;
+        toast(`${INGREDIENTS[box.type].label} delivered to truck!`);
+      } else {
+        toast(`No truck needs ${INGREDIENTS[box.type].label} right now — wasted!`);
+      }
+      // single-use resource: gone for good once delivered, never returns to the tray
+      box.consumed = true;
+      workbenchBoxIds = workbenchBoxIds.filter(id => id !== box.id);
+      renderWorkbench();
+      renderTray();
+
+      checkOrdersComplete();
+      renderRoad();
+      if(pendingDeliveries === 0 && !collectLoopActive) checkDeadlock();
+    }
+
+    if(slotEl && truckEl){
+      flyBoxGhost(INGREDIENTS[box.type].emoji, slotEl.getBoundingClientRect(), truckEl.getBoundingClientRect(), finalize);
+    } else {
+      finalize();
+    }
+  }
+
+  // ============================================================
+  // ORDERS / TRUCKS — one or more can be active at once. Each
+  // truck's requirements are {type, boxes} pairs, e.g. 3 boxes
+  // of tomato.
+  // ============================================================
+  function makeTruckFromLevel(level){
+    return {
+      requirements: level.requirements.map(r => ({ type:r.type, boxes:r.boxes })),
+      delivered: {}   // type -> how many boxes of it have been delivered so far
+    };
+  }
+
+  function isTruckDone(t){
+    return t.requirements.every(r => (t.delivered[r.type]||0) >= r.boxes);
+  }
+
+  // once every truck is done, wait for the completed truck(s) to actually
+  // finish driving off the right edge before swapping in the next level —
+  // the level transition must not cut that animation short
+  const TRUCK_ENTER_MS = 400;
+  const TRUCK_EXIT_MS = 750;        // slower drive-away than the entrance
+  const TRUCK_EXIT_FADE_DELAY_MS = 320; // stays fully visible this long into the drive before it starts fading
+
+  function checkOrdersComplete(){
+    if(activeOrders.length === 0) return;
+    if(activeOrders.every(isTruckDone)){
+      toast("🚚 Level complete! Next truck incoming...");
+      setTimeout(() => advanceLevel(), TRUCK_EXIT_MS + 50);
+    }
+  }
+
+  // road trucks drive in from the left the first time they appear, and once
+  // full, drive off to the right instead of just sitting there dimmed. The
+  // flow reads left-to-right: the upcoming/preview truck sits on the left
+  // (about to arrive) and the active truck(s) sit on the right (further
+  // along, closest to driving off).
+  const enteredTrucks = new WeakSet();  // orders that have already played their entrance
+  const exitingTrucks = new WeakSet();  // orders currently mid drive-away
+  const exitedTrucks = new WeakSet();   // orders fully driven off — stop rendering them
+
+  function renderRoad(){
+    roadEl.innerHTML = '';
+    const views = activeOrders
+      .filter(t => !exitedTrucks.has(t))
+      .map(t => ({ order:t, requirements: t.requirements, delivered: t.delivered, complete:isTruckDone(t) }));
+    views.forEach(v => {
+      const el = document.createElement('div');
+      el.className = 'truck' + (v.complete ? ' complete' : '');
+      // show one icon per required box, so quantity reads visually without any numbers
+      const reqsHtml = v.requirements.map(r => {
+        const doneCount = v.delivered[r.type] || 0;
+        let icons = '';
+        for(let i=0;i<r.boxes;i++){
+          icons += `<span class="req-icon${i < doneCount ? ' done':''}">${INGREDIENTS[r.type].emoji}</span>`;
+        }
+        return icons;
+      }).join('');
+      el.innerHTML = `<div class="burger">🍔</div><div class="reqs">${reqsHtml}</div>`;
+      roadEl.appendChild(el);
+
+      if(!v.order) return; // preview trucks don't drive in/out
+      if(!enteredTrucks.has(v.order)){
+        enteredTrucks.add(v.order);
+        el.style.transition = 'none';
+        el.style.transform = 'translateX(-140px)';
+        el.style.opacity = '0';
+        setTimeout(() => {
+          el.style.transition = `transform ${TRUCK_ENTER_MS}ms ease, opacity ${TRUCK_ENTER_MS}ms ease`;
+          el.style.transform = '';
+          el.style.opacity = '';
+        }, 20);
+      } else if(v.complete && !exitingTrucks.has(v.order)){
+        exitingTrucks.add(v.order);
+        setTimeout(() => {
+          // movement runs the full duration; opacity only starts fading partway
+          // through, so the truck visibly drives off before it disappears
+          el.style.transition = `transform ${TRUCK_EXIT_MS}ms ease, opacity ${TRUCK_EXIT_MS - TRUCK_EXIT_FADE_DELAY_MS}ms ease ${TRUCK_EXIT_FADE_DELAY_MS}ms`;
+          el.style.transform = 'translateX(260px)'; // drive all the way off the right edge
+          el.style.opacity = '0';
+        }, 20);
+        setTimeout(() => {
+          exitedTrucks.add(v.order);
+          renderRoad(); // remaining trucks close the gap
+        }, TRUCK_EXIT_MS);
+      }
+    });
+  }
+
+  // ============================================================
+  // RENDER ALL
+  // ============================================================
+  function renderAll(){
+    renderBoard();
+    renderWorkbench();
+    renderRoad();
+    renderTray();
+    if(customSequence){
+      levelBadgeEl.textContent = `Custom ${customSequenceIndex + 1}/${customSequence.length}`;
+    } else if(customLevelActive){
+      levelBadgeEl.textContent = 'Custom';
+    } else {
+      levelBadgeEl.textContent = `Level ${currentLevelIndex + 1}`;
+    }
+  }
+
+  // applies a fully-authored template (explicit board + tray layout, one
+  // or more orders) exactly as given — used both by the curated LEVELS
+  // (hand-designed) and by anything built/imported in the Level Builder.
+  function applyFullTemplate(template){
+    columns = template.columns.map(col => col.slice()); // fresh copy each time — restart-safe
+    boardRows = template.boardRows;
+    generateTrayFromLayout(trayLayoutRowsOf(template)); // handles older tray formats too
+    workbenchBoxIds = [];
+    gameOver = false;
+    gameOverBackdrop.classList.remove('show');
+    activeOrders = template.orders.map(makeTruckFromLevel);
+    renderAll();
+  }
+
+  // starts a level fully authored in the Level Builder: a hand-painted
+  // board, plus independently-defined tray and one or more truck orders.
+  function beginCustomLevel(){
+    applyFullTemplate(customTemplate);
+  }
+
+  function startLevel(index){
+    currentLevelIndex = index;
+    customLevelActive = false;
+    customSequence = null;
+    applyFullTemplate(getLevel(index));
+  }
+
+  function startCustomLevel(template){
+    customLevelActive = true;
+    customTemplate = template;
+    beginCustomLevel();
+  }
+
+  // plays a list of saved levels back-to-back, in order, looping once the last one completes
+  function startCustomSequence(levels){
+    customSequence = levels;
+    customSequenceIndex = 0;
+    startCustomLevel(levels[0]);
+  }
+
+  function newGame(){
+    startLevel(0);
+  }
+
+  // retry whatever is currently active — a curated level, or a custom build
+  function restartCurrent(){
+    if(customLevelActive) beginCustomLevel();
+    else applyFullTemplate(getLevel(currentLevelIndex));
+  }
+
+  function advanceLevel(){
+    if(customSequence){
+      customSequenceIndex = (customSequenceIndex + 1) % customSequence.length;
+      if(customSequenceIndex === 0) toast('🎉 All saved levels complete — looping back to #1');
+      startCustomLevel(customSequence[customSequenceIndex]);
+    } else if(customLevelActive){
+      beginCustomLevel(); // a single custom level just loops for fast iteration
+    } else {
+      const nextIndex = (currentLevelIndex + 1) % LEVELS.length;
+      if(nextIndex === 0) toast('🎉 All levels complete — looping back to Level 1');
+      startLevel(nextIndex);
+    }
+  }
+
+  // ============================================================
+  // CONFIG PANEL
+  // ============================================================
+  const panelBackdrop = document.getElementById('panelBackdrop');
+  const cfgCap = document.getElementById('cfgCap');
+  const cfgWbSlots = document.getElementById('cfgWbSlots');
+  const gameOverBackdrop = document.getElementById('gameOverBackdrop');
+  const levelBadgeEl = document.getElementById('levelBadge');
+
+  function openPanel(){
+    cfgCap.value = CONFIG.boxCapacity;
+    cfgWbSlots.value = CONFIG.workbenchSlots;
+    panelBackdrop.classList.add('show');
+  }
+  function closePanel(){ panelBackdrop.classList.remove('show'); }
+
+  document.getElementById('btnConfig').addEventListener('click', openPanel);
+  document.getElementById('panelClose').addEventListener('click', closePanel);
+  document.getElementById('btnRestart').addEventListener('click', restartCurrent);
+  document.getElementById('gameOverRestart').addEventListener('click', restartCurrent);
+  document.getElementById('panelApply').addEventListener('click', () => {
+    CONFIG.boxCapacity = Math.max(2, Math.min(20, parseInt(cfgCap.value)||10));
+    CONFIG.workbenchSlots = Math.max(1, Math.min(8, parseInt(cfgWbSlots.value)||5));
+    closePanel();
+    restartCurrent();
+  });
+
+  // ============================================================
+  // LEVEL BUILDER — hand-paint the board, and set the truck order
+  // and tray boxes independently. Everything persists across opens
+  // in this session so you don't lose work. "Play Level" converts
+  // it straight into a running level, no chat round-trip needed.
+  // ============================================================
+  const builderBackdrop = document.getElementById('builderBackdrop');
+  const paletteEl = document.getElementById('palette');
+  const editorBoardEl = document.getElementById('editorBoard');
+  const editorRowCountEl = document.getElementById('editorRowCount');
+  const builderOrders = [ makeEmptyCounts() ]; // list of {type->boxes} objects, one per active truck
+
+  function makeEmptyCounts(){
+    const c = {};
+    INGREDIENT_ORDER.forEach(t => c[t] = 0);
+    return c;
+  }
+
+  // press-and-drag painting: hold the pointer down and drag across cells to
+  // paint a whole stroke, like a brush tool, instead of clicking one by one.
+  // A cell is painted on pointerdown, and again on pointerenter as long as
+  // the pointer is still held down; releasing anywhere stops the stroke.
+  let isPaintingBoard = false;
+  let isPaintingTray = false;
+  function stopPainting(){ isPaintingBoard = false; isPaintingTray = false; }
+  // belt-and-suspenders: a single plain click should never leave painting
+  // "stuck on" — listen for every flavor of release, on window AND document,
+  // so a stray missed pointerup can't leave the brush active forever.
+  ['pointerup','pointercancel','mouseup','touchend','touchcancel'].forEach(evt => {
+    window.addEventListener(evt, stopPainting);
+    document.addEventListener(evt, stopPainting);
+  });
+  window.addEventListener('blur', stopPainting);
+
+  let selectedBrush = INGREDIENT_ORDER[0];
+  let editorRows = [];       // editorRows[r][c], r=0 is front (nearest workbench), 10 columns fixed
+  let editorRowCount = 6;
+  initEditorGrid(editorRowCount);
+
+  function initEditorGrid(rows){
+    editorRows = [];
+    for(let r=0;r<rows;r++) editorRows.push(new Array(CONFIG.boardCols).fill(null));
+  }
+
+  function renderPalette(){
+    paletteEl.innerHTML = '';
+    INGREDIENT_ORDER.forEach(type => {
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.className = 'palette-swatch' + (selectedBrush === type ? ' active' : '');
+      sw.textContent = INGREDIENTS[type].emoji;
+      sw.title = INGREDIENTS[type].label;
+      sw.addEventListener('click', () => { selectedBrush = type; renderPalette(); });
+      paletteEl.appendChild(sw);
+    });
+    const eraser = document.createElement('button');
+    eraser.type = 'button';
+    eraser.className = 'palette-swatch eraser' + (selectedBrush === null ? ' active' : '');
+    eraser.textContent = '✕';
+    eraser.title = 'Eraser';
+    eraser.addEventListener('click', () => { selectedBrush = null; renderPalette(); });
+    paletteEl.appendChild(eraser);
+  }
+
+  function renderEditorBoard(){
+    editorRowCountEl.textContent = `${editorRowCount} row${editorRowCount===1?'':'s'}`;
+    editorBoardEl.style.gridTemplateColumns = `repeat(${CONFIG.boardCols}, 28px)`;
+    editorBoardEl.innerHTML = '';
+    for(let r=editorRowCount-1; r>=0; r--){
+      for(let c=0;c<CONFIG.boardCols;c++){
+        const cell = document.createElement('div');
+        cell.className = 'editor-cell';
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        const type = editorRows[r][c];
+        if(type){
+          cell.style.background = INGREDIENTS[type].color;
+          cell.textContent = INGREDIENTS[type].emoji;
+        }
+        cell.addEventListener('pointerdown', (e) => {
+          isPaintingBoard = true;
+          editorRows[r][c] = selectedBrush;
+          renderEditorBoard();
+          e.preventDefault();
+        });
+        editorBoardEl.appendChild(cell);
+      }
+    }
+  }
+
+  // touch drags don't fire pointerenter on the elements a finger crosses
+  // over (unlike mouse hover) — elementFromPoint on every pointermove is
+  // what makes press-and-drag painting actually work on a touch device
+  editorBoardEl.addEventListener('pointermove', (e) => {
+    if(!isPaintingBoard) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    if(!el || !el.classList.contains('editor-cell') || !editorBoardEl.contains(el)) return;
+    const r = parseInt(el.dataset.r, 10);
+    const c = parseInt(el.dataset.c, 10);
+    if(editorRows[r][c] === selectedBrush) return;
+    editorRows[r][c] = selectedBrush;
+    renderEditorBoard();
+  });
+
+  document.getElementById('editorRowPlus').addEventListener('click', () => {
+    if(editorRowCount >= 20) return;
+    editorRows.push(new Array(CONFIG.boardCols).fill(null));
+    editorRowCount++;
+    renderEditorBoard();
+  });
+  document.getElementById('editorRowMinus').addEventListener('click', () => {
+    if(editorRowCount <= 1) return;
+    editorRows.pop();
+    editorRowCount--;
+    renderEditorBoard();
+  });
+  document.getElementById('editorClear').addEventListener('click', () => {
+    initEditorGrid(editorRowCount);
+    renderEditorBoard();
+  });
+
+  // ---- Tray editor: place individual boxes, in whatever order/grouping
+  // you like — this exact arrangement is what players see and pick from.
+  const trayPaletteEl = document.getElementById('trayPalette');
+  const trayEditorBoardEl = document.getElementById('trayEditorBoard');
+  const trayEditorRowCountEl = document.getElementById('trayEditorRowCount');
+  let selectedTrayBrush = INGREDIENT_ORDER[0];
+  let trayEditorRows = [];
+  let trayEditorRowCount = Math.ceil(INGREDIENT_ORDER.length / CONFIG.trayCols);
+  initTrayEditorGrid(trayEditorRowCount);
+  // helpful default: one of each ingredient, in order, wrapped at trayCols per row
+  INGREDIENT_ORDER.forEach((type, i) => {
+    trayEditorRows[Math.floor(i / CONFIG.trayCols)][i % CONFIG.trayCols] = type;
+  });
+
+  function initTrayEditorGrid(rows){
+    trayEditorRows = [];
+    for(let r=0;r<rows;r++) trayEditorRows.push(new Array(CONFIG.trayCols).fill(null));
+  }
+
+  function renderTrayPalette(){
+    trayPaletteEl.innerHTML = '';
+    INGREDIENT_ORDER.forEach(type => {
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.className = 'palette-swatch' + (selectedTrayBrush === type ? ' active' : '');
+      sw.textContent = INGREDIENTS[type].emoji;
+      sw.title = INGREDIENTS[type].label;
+      sw.addEventListener('click', () => { selectedTrayBrush = type; renderTrayPalette(); });
+      trayPaletteEl.appendChild(sw);
+    });
+    const eraser = document.createElement('button');
+    eraser.type = 'button';
+    eraser.className = 'palette-swatch eraser' + (selectedTrayBrush === null ? ' active' : '');
+    eraser.textContent = '✕';
+    eraser.title = 'Eraser';
+    eraser.addEventListener('click', () => { selectedTrayBrush = null; renderTrayPalette(); });
+    trayPaletteEl.appendChild(eraser);
+  }
+
+  function renderTrayEditorBoard(){
+    trayEditorRowCountEl.textContent = `${trayEditorRowCount} row${trayEditorRowCount===1?'':'s'}`;
+    trayEditorBoardEl.style.gridTemplateColumns = `repeat(${CONFIG.trayCols}, 28px)`;
+    trayEditorBoardEl.innerHTML = '';
+    for(let r=0; r<trayEditorRowCount; r++){
+      for(let c=0;c<CONFIG.trayCols;c++){
+        const cell = document.createElement('div');
+        cell.className = 'editor-cell';
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        const type = trayEditorRows[r][c];
+        if(type){
+          cell.style.background = INGREDIENTS[type].color;
+          cell.textContent = INGREDIENTS[type].emoji;
+        }
+        cell.addEventListener('pointerdown', (e) => {
+          isPaintingTray = true;
+          trayEditorRows[r][c] = selectedTrayBrush;
+          renderTrayEditorBoard();
+          e.preventDefault();
+        });
+        trayEditorBoardEl.appendChild(cell);
+      }
+    }
+  }
+
+  // same touch-drag fix as the board editor: elementFromPoint on
+  // pointermove instead of relying on pointerenter (unreliable for touch)
+  trayEditorBoardEl.addEventListener('pointermove', (e) => {
+    if(!isPaintingTray) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    if(!el || !el.classList.contains('editor-cell') || !trayEditorBoardEl.contains(el)) return;
+    const r = parseInt(el.dataset.r, 10);
+    const c = parseInt(el.dataset.c, 10);
+    if(trayEditorRows[r][c] === selectedTrayBrush) return;
+    trayEditorRows[r][c] = selectedTrayBrush;
+    renderTrayEditorBoard();
+  });
+
+  document.getElementById('trayRowPlus').addEventListener('click', () => {
+    if(trayEditorRowCount >= 10) return;
+    trayEditorRows.push(new Array(CONFIG.trayCols).fill(null));
+    trayEditorRowCount++;
+    renderTrayEditorBoard();
+  });
+  document.getElementById('trayRowMinus').addEventListener('click', () => {
+    if(trayEditorRowCount <= 1) return;
+    trayEditorRows.pop();
+    trayEditorRowCount--;
+    renderTrayEditorBoard();
+  });
+  document.getElementById('trayEditorClear').addEventListener('click', () => {
+    initTrayEditorGrid(trayEditorRowCount);
+    renderTrayEditorBoard();
+  });
+
+  // generic stepper-row list, used for the truck order editor
+  function renderStepperRows(container, counts){
+    container.innerHTML = '';
+    INGREDIENT_ORDER.forEach(type => {
+      const ing = INGREDIENTS[type];
+      const row = document.createElement('div');
+      row.className = 'builder-row';
+      row.innerHTML = `
+        <div class="b-label"><span class="b-emoji">${ing.emoji}</span>${ing.label}</div>
+        <div class="stepper">
+          <button class="b-minus" type="button">−</button>
+          <span class="b-count">${counts[type]}</span>
+          <button class="b-plus" type="button">+</button>
+        </div>
+      `;
+      row.querySelector('.b-minus').addEventListener('click', () => {
+        counts[type] = Math.max(0, counts[type] - 1);
+        renderStepperRows(container, counts);
+      });
+      row.querySelector('.b-plus').addEventListener('click', () => {
+        counts[type] = Math.min(9, counts[type] + 1);
+        renderStepperRows(container, counts);
+      });
+      container.appendChild(row);
+    });
+  }
+
+  const builderOrdersEl = document.getElementById('builderOrders');
+
+  function renderBuilderOrders(){
+    builderOrdersEl.innerHTML = '';
+    builderOrders.forEach((counts, idx) => {
+      const card = document.createElement('div');
+      card.className = 'order-card';
+      const head = document.createElement('div');
+      head.className = 'order-card-head';
+      head.innerHTML = `<span class="order-card-title">Truck ${idx+1}</span>`;
+      if(builderOrders.length > 1){
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'order-card-remove';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => {
+          builderOrders.splice(idx, 1);
+          renderBuilderOrders();
+        });
+        head.appendChild(removeBtn);
+      }
+      card.appendChild(head);
+      const rowsEl = document.createElement('div');
+      card.appendChild(rowsEl);
+      builderOrdersEl.appendChild(card);
+      renderStepperRows(rowsEl, counts);
+    });
+  }
+
+  document.getElementById('builderAddOrder').addEventListener('click', () => {
+    builderOrders.push(makeEmptyCounts());
+    renderBuilderOrders();
+  });
+
+  function openBuilder(){
+    stopPainting();
+    renderPalette();
+    renderEditorBoard();
+    renderBuilderOrders();
+    renderTrayPalette();
+    renderTrayEditorBoard();
+    renderSavedLevelsList();
+    builderBackdrop.classList.add('show');
+  }
+  function closeBuilder(){ builderBackdrop.classList.remove('show'); }
+
+  document.getElementById('btnBuilder').addEventListener('click', openBuilder);
+  document.getElementById('builderClose').addEventListener('click', closeBuilder);
+
+  // builds a playable {columns, boardRows, orders, trayLayout} template from
+  // whatever is currently set up in the editor, or null (+ toast) if invalid
+  function captureTemplateFromEditor(){
+    const orders = builderOrders
+      .map(counts => ({ requirements: INGREDIENT_ORDER.filter(t => counts[t] > 0).map(t => ({ type:t, boxes:counts[t] })) }))
+      .filter(o => o.requirements.length > 0);
+    if(orders.length === 0){
+      toast('Add at least one truck order first');
+      return null;
+    }
+    // tray: preserve each editor row as its own row/block, exactly as arranged
+    const trayLayout = [];
+    for(let r=0;r<trayEditorRowCount;r++){
+      const rowTypes = [];
+      for(let c=0;c<CONFIG.trayCols;c++){
+        if(trayEditorRows[r][c]) rowTypes.push(trayEditorRows[r][c]);
+      }
+      if(rowTypes.length > 0) trayLayout.push(rowTypes);
+    }
+    if(trayLayout.length === 0){
+      toast('Place at least one tray box first');
+      return null;
+    }
+    // compact each board column: drop empty cells, keep front-to-back order intact
+    const cols = [];
+    for(let c=0;c<CONFIG.boardCols;c++){
+      const col = [];
+      for(let r=0;r<editorRowCount;r++){
+        if(editorRows[r][c]) col.push(editorRows[r][c]);
+      }
+      cols.push(col);
+    }
+    const rows = Math.max(1, ...cols.map(c => c.length));
+    return { columns: cols, boardRows: rows, orders, trayLayout };
+  }
+
+  document.getElementById('builderPlay').addEventListener('click', () => {
+    const template = captureTemplateFromEditor();
+    if(!template) return;
+    closeBuilder();
+    startCustomLevel(template);
+  });
+
+  // ============================================================
+  // SAVED LEVELS — persisted to localStorage so you can build a
+  // batch of levels and play them back in order across sessions.
+  // ============================================================
+  const SAVE_KEY = 'burgerBoxRush.savedLevels';
+  let savedLevels = [];
+  try { savedLevels = JSON.parse(localStorage.getItem(SAVE_KEY)) || []; } catch(e) { savedLevels = []; }
+
+  function persistSavedLevels(){
+    localStorage.setItem(SAVE_KEY, JSON.stringify(savedLevels));
+  }
+
+  function renderSavedLevelsList(){
+    const listEl = document.getElementById('savedLevelsList');
+    const playSeqBtn = document.getElementById('playSequenceBtn');
+    listEl.innerHTML = '';
+    if(savedLevels.length === 0){
+      listEl.innerHTML = '<div class="saved-levels-empty">No saved levels yet.</div>';
+    }
+    savedLevels.forEach((entry, idx) => {
+      const row = document.createElement('div');
+      row.className = 'saved-level-item';
+      row.innerHTML = `
+        <span class="saved-level-name">${idx+1}. ${entry.name}</span>
+        <div class="saved-level-actions">
+          <button type="button" class="sl-load">Load</button>
+          <button type="button" class="sl-play">Play</button>
+          <button type="button" class="sl-export">⬇</button>
+          <button type="button" class="sl-delete">🗑</button>
+        </div>
+      `;
+      row.querySelector('.sl-load').addEventListener('click', () => loadTemplateIntoEditor(entry.template));
+      row.querySelector('.sl-play').addEventListener('click', () => {
+        closeBuilder();
+        customSequence = null;
+        startCustomLevel(entry.template);
+      });
+      row.querySelector('.sl-export').addEventListener('click', () => downloadJSON(`${entry.name}.json`, entry));
+      row.querySelector('.sl-delete').addEventListener('click', () => {
+        savedLevels.splice(idx, 1);
+        persistSavedLevels();
+        renderSavedLevelsList();
+      });
+      listEl.appendChild(row);
+    });
+    playSeqBtn.style.display = savedLevels.length > 0 ? '' : 'none';
+  }
+
+  // older saved levels used grouped {type,boxes} tray requirements instead
+  // of a positional layout — expand those into a flat ordered list so old
+  // saves still load and play correctly. Returns an array of rows (each
+  // row itself an array of types), regardless of which era saved it.
+  function trayLayoutRowsOf(template){
+    if(template.trayLayout && template.trayLayout.length){
+      // rows format: [[type,type,...], [type,...]]. Flat legacy format:
+      // [type,type,...] — wrap it as a single row.
+      return Array.isArray(template.trayLayout[0]) ? template.trayLayout : [template.trayLayout];
+    }
+    if(template.trayReqs){
+      const flat = [];
+      template.trayReqs.forEach(r => { for(let i=0;i<r.boxes;i++) flat.push(r.type); });
+      return flat.length ? [flat] : [];
+    }
+    return [];
+  }
+
+  function loadTemplateIntoEditor(template){
+    // rebuild row-major editorRows from the (possibly uneven) column-major template
+    editorRowCount = Math.max(1, template.boardRows);
+    initEditorGrid(editorRowCount);
+    for(let c=0;c<CONFIG.boardCols;c++){
+      const col = template.columns[c] || [];
+      for(let r=0;r<col.length;r++) editorRows[r][c] = col[r];
+    }
+    builderOrders.length = 0;
+    template.orders.forEach(o => {
+      const counts = makeEmptyCounts();
+      o.requirements.forEach(r => counts[r.type] = r.boxes);
+      builderOrders.push(counts);
+    });
+    // each saved row becomes one editor row (split further if it's wider than CONFIG.trayCols)
+    const trayRows = trayLayoutRowsOf(template);
+    const editorRowsList = [];
+    trayRows.forEach(rowTypes => {
+      for(let i=0;i<rowTypes.length;i+=CONFIG.trayCols){
+        editorRowsList.push(rowTypes.slice(i, i+CONFIG.trayCols));
+      }
+    });
+    if(editorRowsList.length === 0) editorRowsList.push([]);
+    trayEditorRowCount = editorRowsList.length;
+    initTrayEditorGrid(trayEditorRowCount);
+    editorRowsList.forEach((rowTypes, r) => {
+      rowTypes.forEach((type, c) => { trayEditorRows[r][c] = type; });
+    });
+    renderEditorBoard();
+    renderBuilderOrders();
+    renderTrayEditorBoard();
+    toast('Loaded into editor — tweak and save again if you like');
+  }
+
+  document.getElementById('saveLevelBtn').addEventListener('click', () => {
+    const template = captureTemplateFromEditor();
+    if(!template) return;
+    const nameInput = document.getElementById('saveNameInput');
+    const name = nameInput.value.trim() || `Level ${savedLevels.length + 1}`;
+    savedLevels.push({ name, template });
+    persistSavedLevels();
+    nameInput.value = '';
+    renderSavedLevelsList();
+    toast(`Saved "${name}"`);
+  });
+
+  document.getElementById('playSequenceBtn').addEventListener('click', () => {
+    if(savedLevels.length === 0) return;
+    closeBuilder();
+    startCustomSequence(savedLevels.map(e => e.template));
+  });
+
+  // export/import as a .json file — the only way to get a level out of this
+  // browser's localStorage and onto someone else's device
+  function downloadJSON(filename, data){
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById('exportAllBtn').addEventListener('click', () => {
+    if(savedLevels.length === 0){
+      toast('No saved levels to export yet');
+      return;
+    }
+    downloadJSON('burger-box-levels.json', savedLevels);
+  });
+
+  document.getElementById('importBtn').addEventListener('click', () => {
+    document.getElementById('importFileInput').click();
+  });
+
+  document.getElementById('importFileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // allow re-importing the same file later
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let data;
+      try { data = JSON.parse(reader.result); }
+      catch(err){ toast('That file isn\'t valid JSON'); return; }
+      const entries = Array.isArray(data) ? data : [data];
+      const valid = entries.filter(en => en && en.template && Array.isArray(en.template.orders));
+      if(valid.length === 0){
+        toast('No valid levels found in that file');
+        return;
+      }
+      valid.forEach(en => savedLevels.push({ name: en.name || `Level ${savedLevels.length + 1}`, template: en.template }));
+      persistSavedLevels();
+      renderSavedLevelsList();
+      toast(`Imported ${valid.length} level${valid.length===1?'':'s'}`);
+    };
+    reader.readAsText(file);
+  });
+
+  newGame();
+})();
+</script>
+</body>
+</html>
